@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from app.api import records, interviews
+from app.api import records
 
 # FastAPI 앱 생성
 app = FastAPI(
@@ -21,7 +21,6 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(records.router, prefix="/api/records", tags=["records"])
-app.include_router(interviews.router, prefix="/api/interviews", tags=["interviews"])
 
 
 @app.get("/")

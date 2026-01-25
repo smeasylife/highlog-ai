@@ -20,13 +20,12 @@ class Settings(BaseSettings):
     aws_region: str = "ap-northeast-2"
     aws_s3_bucket: str
 
-    # OpenAI
-    openai_api_key: str
-    openai_model: str = "gpt-4-turbo-preview"
+    # Google AI (Gemini)
+    google_api_key: str
 
-    # LangGraph
-    langchain_tracing_v2: bool = True
-    langchain_api_key: str
+    # LangGraph (선택사항)
+    langchain_tracing_v2: bool = False  # 기본 비활성화
+    langchain_api_key: str = ""
     langchain_project: str = "highlog-interview"
 
     # CORS

@@ -1,54 +1,50 @@
-# 📄 claude.md
+📄 claude.md (Enterprise Button-Separated Version)
+1. Project Overview
+Goal: Gemini 2.5 Flash/Pro 기반의 생기부 맞춤형 면접 플랫폼.
 
-## 1. Project Overview
+Structure: '업로드/벡터화'와 '질문 생성' 프로세스를 분리하여 운영 효율성 극대화.
 
-- **Project Name:** AI 면접 연습 플랫폼 (Life Record-based AI Interview Platform)
-- **Core Goal:** 사용자의 생활기록부(PDF)를 기반으로 **Gemini 1.5 Flash/Pro** 모델이 실시간 대화를 진행하며, 매 순간 생기부 내용을 RAG(검색 증강 생성) 방식으로 참조하여 개인 맞춤형 질문을 생성함.
-- **Target Users:** 대학 입시 및 취업 준비생 (초기 100명 규모 기업용 서비스).
+2. Updated Tech Stack
+AI Engine: Python 3.11+ / FastAPI / LangGraph
 
-## 2. Tech Stack
+AI Model: Gemini 2.5 Flash (질문 생성 - Thinking 모드 활성화), Gemini 2.5/3 Pro (최종 리포트 분석).
 
-- **Backend:** Java 17 / Spring Boot 3.x (WebClient 기반 비동기 통신)
-- **AI Engine:** Python 3.11+ / FastAPI / LangGraph
-- **AI Model:** **Google Gemini 1.5 Flash** (실시간 면접 - 속도/비용 최적화) 및 **Gemini 1.5 Pro** (심층 분석 및 최종 리포트)
-- **Embedding:** **Google AI `text-embedding-004`** (1024/768 차원 지원)
-- **Database:** **PostgreSQL 15 + pgvector** (RAG용 벡터 데이터 및 LangGraph 상태 저장 통합 운영)
-- **Cache/Auth:** Redis (JWT Token, Rate Limiting, OTP)
-- **Infrastructure:** AWS (VPC, ALB, Private EC2, NAT Gateway, S3, CloudFront)
+Embedding: Google text-embedding-004.
 
-## 3. Detailed Data Flow: RAG-based Stateful Interview
+Vector DB: PostgreSQL 15 + pgvector (Metadata Filter: record_id, category 필수).
 
-### 3.1 PDF Ingestion & Vectorization (Pre-process)
+3. Separated Workflow Design
+3.1 Phase 1: Upload & Vectorization (Trigger: Upload Button)
+생기부 등록 시점에 데이터베이스를 미리 구축합니다.
 
-1. **Upload:** Client → S3 직접 업로드 (Presigned URL).
-2. **Chunking:** FastAPI가 S3에서 PDF를 읽어 의미 단위(Chunk)로 분할.
-3. **Indexing:** Gemini Embedding 모델을 사용하여 각 청크를 벡터화한 후 PostgreSQL의 `record_chunks` 테이블에 저장.
+S3 Upload: Client → S3 직접 업로드 (Presigned URL).
 
-### 3.2 Real-time Interview Cycle (LangGraph)
+Ingestion: FastAPI가 S3에서 PDF 로드 → Chunking → Gemini Embedding 수행.
 
-1. **Init:** Spring Boot가 세션 생성 요청 → LangGraph가 `thread_id` 기반 상태 초기화.
-2. **Retrieval Node:** 사용자의 답변이 들어오면, 질문 생성 전 PostgreSQL(`pgvector`)에서 답변과 가장 연관성 높은 생기부 구절을 검색.
-3. **Generation Node:** [검색된 생기부 구절] + [전체 대화 맥락]을 **Gemini 1.5 Flash**에 전달하여 다음 질문을 즉석 생성.
-4. **Streaming:** 생성된 토큰을 FastAPI → Spring Boot → Client 순으로 **SSE 스트리밍** 전송.
-5. **Checkpointer:** 모든 대화 상태는 PostgreSQL `checkpoints` 테이블에 실시간 저장되어 중단 시 재개 가능.
+Vector Store: 각 청크를 record_chunks 테이블에 저장하되, **record_id**를 메타데이터로 반드시 포함.
 
-## 4. Key Development Conventions
+Status Update: student_records 테이블의 상태를 READY로 변경.
 
-### 🛡️ Security & Privacy
+3.2 Phase 2: Bulk Question Generation (Trigger: Generate Button)
+사용자가 버튼 클릭 시 SSE 연결을 맺고 실시간으로 질문을 뽑아냅니다.
 
-- **Direct Upload:** 서버 부하 방지 및 보안을 위해 S3 Presigned URL 방식 고수.
-- **VPC Isolation:** DB와 AI 엔진은 Private Subnet에 배치하고, 외부 통신은 NAT Gateway를 통해서만 수행.
-- **Data Masking:** 면접 중 개인식별정보(PII) 노출 최소화 로직 적용.
+Step 1: SSE Handshake - Spring Boot와 FastAPI 간 SSE 스트림 연결.
 
-### 💻 API & Code Structure
+Step 2: Metadata Search - 넘겨받은 record_id를 기반으로 벡터 DB에서 출결, 성적, 세특 등 카테고리별 데이터 추출.
 
-- **Async IO:** FastAPI와 Spring Boot(`WebClient`) 간 통신은 모두 비동기(Async) 처리.
-- **JSONB Utilization:** 면접 로그 및 리포트는 유연한 확장을 위해 PostgreSQL의 `JSONB` 타입 사용.
+Step 3: LangGraph Generator - Gemini 2.5 Flash가 영역별 질문(5개 이하) 및 모범 답안, 질문 목적을 생성.
 
-## 5. Implementation Roadmap (Phases)
+Step 4: Progress Streaming - 각 노드 완료 시 진행률(%)과 상태 메시지 yield.
 
-- **Phase 1: Foundation** - VPC, PostgreSQL(pgvector), Redis 환경 구축 및 Docker Compose 설정.
-- **Phase 2: RAG Pipeline** - PDF 텍스트 추출 및 Gemini Embedding 연동, 벡터 검색 로직 구현.
-- **Phase 3: Interview Engine** - LangGraph 기반 상태 전이 설계 및 Gemini 1.5 Flash 스트리밍 연동.
-- **Phase 4: Orchestration** - Spring Boot에서 FastAPI 스트림을 수신하여 클라이언트로 SSE 재전달.
-- **Phase 5: Evaluation** - 면접 종료 후 Gemini 1.5 Pro를 이용한 심층 분석 리포트 생성 로직 구현.
+(예: 20% - 출결 분석 중... -> 50% - 세특 질문 생성 중...)
+
+Step 5: Finalization - 생성된 질문 세트를 questions 테이블에 벌크 저장 후 스트림 종료.
+
+4. Key Development Rules
+Gemini Native Audio: 면접 시 별도 STT 없이 음성 파일을 직접 Gemini 2.5 Flash에 전달.
+
+비용: 10분 면접 기준 약 26원 (1초당 32토큰 계산).
+
+Professional TTS: Google Cloud TTS를 활용해 신뢰감 있는 면접관 목소리 생성.
+
+Structured Output: AI 응답은 반드시 Pydantic 모델을 통해 JSON 포맷으로 강제.

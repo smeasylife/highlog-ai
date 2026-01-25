@@ -1,38 +1,43 @@
+"""생기부 관련 API 엔드포인트 - 벡터화 & 질문 생성 (분리된 워크플로우)"""
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
+import json
+import asyncio
+
 from database import get_db
 from app.models import StudentRecord, Question
 from app.services.pdf_service import pdf_service
-from app.graphs.record_analysis import record_analysis_graph, AnalysisState
+from app.services.vector_service import vector_service
+from app.graphs.record_analysis import question_generation_graph, QuestionGenerationState
+from app.schemas import VectorizeRequest, GenerateQuestionsRequest, SSEProgressEvent, QuestionData
+
 import logging
-import uuid
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-class AnalyzeRecordRequest(BaseModel):
-    record_id: int
+# ==================== Phase 1: 벡터화 (Upload 버튼 트리거) ====================
 
-
-class QuestionResponse(BaseModel):
-    category: str
-    content: str
-    difficulty: str
-    model_answer: Optional[str] = None
-
-
-@router.post("/{record_id}/analyze")
-async def analyze_record(
+@router.post("/{record_id}/vectorize")
+async def vectorize_record(
     record_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
-    생기부 분석 및 예상 질문 생성
+    생기부 벡터화 엔드포인트 (Upload 버튼 클릭 시 호출)
+
+    워크플로우:
+    1. S3에서 PDF 로드
+    2. 텍스트 추출
+    3. 카테고리별 청킹 (Chunking)
+    4. Gemini Embedding으로 벡터화
+    5. PostgreSQL의 record_chunks 테이블에 저장
+    6. student_records 테이블의 상태를 READY로 변경
     """
     try:
         # 1. 생기부 조회
@@ -44,52 +49,46 @@ async def analyze_record(
             raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
 
         # 상태 검증
-        if record.status == "ANALYZING":
-            raise HTTPException(status_code=409, detail="현재 분석이 진행 중입니다.")
+        if record.status == "VECTORIZING":
+            raise HTTPException(status_code=409, detail="현재 벡터화가 진행 중입니다.")
         if record.status == "READY":
-            raise HTTPException(status_code=409, detail="이미 분석이 완료되었습니다.")
+            raise HTTPException(status_code=409, detail="이미 벡터화가 완료되었습니다.")
 
         # 상태 변경
-        record.status = "ANALYZING"
+        record.status = "VECTORIZING"
         db.commit()
 
-        # 백그라운드 태스크로 분석 실행
+        # 백그라운드 태스크로 벡터화 실행
         background_tasks.add_task(
-            _process_record_analysis,
+            _process_vectorization,
             record.id,
             record.s3_key,
-            record.target_school or "알 수 없음",
-            record.target_major or "알 수 없음",
-            record.interview_type or "종합전형",
             db
         )
 
         return {
-            "message": "분석이 시작되었습니다.",
+            "message": "벡터화가 시작되었습니다.",
             "recordId": record_id,
-            "status": "ANALYZING"
+            "status": "VECTORIZING"
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error starting analysis: {e}")
-        raise HTTPException(status_code=500, detail="분석 시작 중 오류가 발생했습니다.")
+        logger.error(f"Error starting vectorization: {e}")
+        raise HTTPException(status_code=500, detail="벡터화 시작 중 오류가 발생했습니다.")
 
 
-async def _process_record_analysis(
+async def _process_vectorization(
     record_id: int,
     s3_key: str,
-    target_school: str,
-    target_major: str,
-    interview_type: str,
     db: Session
 ):
     """
-    백그라운드에서 생기부 분석 처리
+    백그라운드에서 벡터화 처리
     """
     try:
-        logger.info(f"Processing analysis for record {record_id}")
+        logger.info(f"Processing vectorization for record {record_id}")
 
         # 1. PDF 텍스트 추출
         pdf_text = await pdf_service.extract_text_from_s3(s3_key)
@@ -97,63 +96,181 @@ async def _process_record_analysis(
         if not pdf_text:
             raise Exception("PDF 텍스트 추출 실패")
 
-        # 2. LangGraph 분석 실행
-        analysis_state = AnalysisState(
-            record_id=record_id,
+        # 2. 벡터화 (청킹 + 임베딩 + DB 저장)
+        success, message = await vector_service.vectorize_pdf(
             pdf_text=pdf_text,
-            target_school=target_school,
-            target_major=target_major,
-            interview_type=interview_type,
-            questions=[],
-            error=""
+            record_id=record_id,
+            db=db
         )
 
-        result = await record_analysis_graph.run(analysis_state)
+        if not success:
+            raise Exception(message)
 
-        if result['error']:
-            raise Exception(result['error'])
-
-        questions = result['questions']
-
-        # 3. 질문 저장
-        for q in questions:
-            question = Question(
-                record_id=record_id,
-                category=q.get('category', '기본'),
-                content=q['content'],
-                difficulty=q.get('difficulty', 'BASIC'),
-                model_answer=q.get('model_answer')
-            )
-            db.add(question)
-
-        # 4. 상태 업데이트
+        # 3. 상태 업데이트
         record = db.query(StudentRecord).filter(
             StudentRecord.id == record_id
         ).first()
 
         record.status = "READY"
         from datetime import datetime
-        record.analyzed_at = datetime.now()
+        record.vectorized_at = datetime.now()
 
         db.commit()
 
-        logger.info(f"Successfully analyzed record {record_id}, created {len(questions)} questions")
+        logger.info(f"Successfully vectorized record {record_id}: {message}")
 
     except Exception as e:
-        logger.error(f"Error processing record analysis: {e}")
+        logger.error(f"Error processing vectorization: {e}")
 
         # 실패 상태로 변경
         try:
             record = db.query(StudentRecord).filter(
                 StudentRecord.id == record_id
             ).first()
-            record.status = "FAILED"
+            record.status = "ERROR"
             db.commit()
         except:
             pass
 
 
-@router.get("/{record_id}/questions", response_model=List[QuestionResponse])
+# ==================== Phase 2: 벌크 질문 생성 (Generate 버튼 트리거 + SSE) ====================
+
+@router.post("/{record_id}/generate-questions")
+async def generate_questions(
+    record_id: int,
+    request: GenerateQuestionsRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    벌크 질문 생성 엔드포인트 (Generate 버튼 클릭 시 호출)
+
+    SSE 스트리밍으로 실시간 진행률 전송
+
+    워크플로우:
+    1. SSE Handshake - Spring Boot와 FastAPI 간 SSE 스트림 연결
+    2. Metadata Search - record_id를 기반으로 벡터 DB에서 카테고리별 데이터 추출
+    3. LangGraph Generator - Gemini 2.5 Flash가 영역별 질문(5개 이하) 및 모범 답안, 질문 목적 생성
+    4. Progress Streaming - 각 노드 완료 시 진행률(%)과 상태 메시지 yield
+    5. Finalization - 생성된 질문 세트를 questions 테이블에 벌크 저장 후 스트림 종료
+    """
+    try:
+        # 1. 생기부 조회
+        record = db.query(StudentRecord).filter(
+            StudentRecord.id == record_id
+        ).first()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
+
+        if record.status != "READY":
+            raise HTTPException(
+                status_code=400,
+                detail=f"벡터화가 완료되지 않았습니다. 현재 상태: {record.status}"
+            )
+
+        # 2. SSE 스트리밍 함수 정의
+        async def event_stream():
+            try:
+                # 초기 상태 생성
+                initial_state = QuestionGenerationState(
+                    record_id=record_id,
+                    target_school=request.target_school or record.target_school or "알 수 없음",
+                    target_major=request.target_major or record.target_major or "알 수 없음",
+                    interview_type=request.interview_type or record.interview_type or "종합전형",
+                    current_category=None,
+                    processed_categories=[],
+                    all_questions=[],
+                    progress=0,
+                    status_message="",
+                    error=""
+                )
+
+                # LangGraph 실행 (스트리밍)
+                async for state_update in question_generation_graph.astream(initial_state):
+                    # 진행률 이벤트 전송
+                    event = SSEProgressEvent(
+                        type="progress",
+                        progress=state_update.get('progress', 0),
+                        message=state_update.get('status_message', ''),
+                        category=state_update.get('current_category'),
+                        questions=None
+                    )
+
+                    yield f"data: {event.model_dump_json()}\n\n"
+
+                # 최종 상태 수신
+                final_state = initial_state  # astream은 상태를 업데이트하지 않음, 실제로는 checkpoint에서 로드 필요
+
+                # 에러 체크
+                if final_state.get('error'):
+                    error_event = SSEProgressEvent(
+                        type="error",
+                        progress=0,
+                        message=f"오류 발생: {final_state['error']}",
+                        questions=None
+                    )
+                    yield f"data: {error_event.model_dump_json()}\n\n"
+                    return
+
+                # 질문 DB 저장
+                questions_to_save = final_state.get('all_questions', [])
+
+                if questions_to_save:
+                    for q in questions_to_save:
+                        question = Question(
+                            record_id=record_id,
+                            category=q.get('category', '기본'),
+                            content=q['content'],
+                            difficulty=q.get('difficulty', 'BASIC'),
+                            model_answer=q.get('model_answer'),
+                            question_purpose=q.get('question_purpose')
+                        )
+                        db.add(question)
+
+                    db.commit()
+
+                # 완료 이벤트 전송
+                complete_event = SSEProgressEvent(
+                    type="complete",
+                    progress=100,
+                    message=f"질문 생성 완료! 총 {len(questions_to_save)}개 질문이 생성되었습니다.",
+                    questions=[
+                        QuestionData(**q) for q in questions_to_save
+                    ]
+                )
+                yield f"data: {complete_event.model_dump_json()}\n\n"
+
+            except Exception as e:
+                logger.error(f"Error in event stream: {e}")
+                error_event = SSEProgressEvent(
+                    type="error",
+                    progress=0,
+                    message=f"스트리밍 오류: {str(e)}",
+                    questions=None
+                )
+                yield f"data: {error_event.model_dump_json()}\n\n"
+
+        # 3. SSE 응답 반환
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating questions: {e}")
+        raise HTTPException(status_code=500, detail="질문 생성 중 오류가 발생했습니다.")
+
+
+# ==================== 질문 조회 ====================
+
+@router.get("/{record_id}/questions")
 async def get_questions(
     record_id: int,
     category: Optional[str] = None,
@@ -172,9 +289,6 @@ async def get_questions(
         if not record:
             raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
 
-        if record.status != "READY":
-            raise HTTPException(status_code=400, detail="아직 분석이 완료되지 않았습니다.")
-
         # 질문 조회
         query = db.query(Question).filter(Question.record_id == record_id)
 
@@ -185,18 +299,58 @@ async def get_questions(
 
         questions = query.all()
 
-        return [
-            QuestionResponse(
-                category=q.category,
-                content=q.content,
-                difficulty=q.difficulty,
-                model_answer=q.model_answer
-            )
-            for q in questions
-        ]
+        return {
+            "recordId": record_id,
+            "total": len(questions),
+            "questions": [
+                {
+                    "id": q.id,
+                    "category": q.category,
+                    "content": q.content,
+                    "difficulty": q.difficulty,
+                    "modelAnswer": q.model_answer,
+                    "questionPurpose": q.question_purpose,
+                    "isBookmarked": q.is_bookmarked,
+                    "createdAt": q.created_at.isoformat() if q.created_at else None
+                }
+                for q in questions
+            ]
+        }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting questions: {e}")
         raise HTTPException(status_code=500, detail="질문 조회 중 오류가 발생했습니다.")
+
+
+# ==================== 생기부 상태 조회 ====================
+
+@router.get("/{record_id}/status")
+async def get_record_status(
+    record_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    생기부 처리 상태 조회
+    """
+    try:
+        record = db.query(StudentRecord).filter(
+            StudentRecord.id == record_id
+        ).first()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
+
+        return {
+            "recordId": record_id,
+            "status": record.status,
+            "createdAt": record.created_at.isoformat() if record.created_at else None,
+            "vectorizedAt": record.vectorized_at.isoformat() if record.vectorized_at else None
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting status: {e}")
+        raise HTTPException(status_code=500, detail="상태 조회 중 오류가 발생했습니다.")

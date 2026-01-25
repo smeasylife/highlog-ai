@@ -1,75 +1,237 @@
-from typing import TypedDict, List, Dict, Any
-from langchain_openai import ChatOpenAI
+from typing import TypedDict, List, Dict, Any, Optional
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.graph import StateGraph, END
 from config import settings
 import logging
 import json
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 
-class AnalysisState(TypedDict):
-    """생기부 분석 상태"""
+class QuestionGenerationState(TypedDict):
+    """질문 생성 상태"""
     record_id: int
-    pdf_text: str
     target_school: str
     target_major: str
     interview_type: str
-    questions: List[Dict[str, Any]]
+
+    # 진행 상황
+    current_category: Optional[str]
+    processed_categories: List[str]
+
+    # 생성된 질문
+    all_questions: List[Dict[str, Any]]
+
+    # 진행률
+    progress: int
+    status_message: str
+
+    # 에러
     error: str
 
 
-class RecordAnalysisGraph:
-    """생활기록부 분석 및 질문 생성 그래프"""
+class QuestionGenerationGraph:
+    """벌크 질문 생성 그래프 (SSE 스트리밍 지원)"""
+
+    # 카테고리 정의
+    CATEGORIES = ["출결", "성적", "세특", "수상", "독서", "진로", "기타"]
 
     def __init__(self):
-        self.llm = ChatOpenAI(
-            model=settings.openai_model,
+        # Gemini 2.5 Flash 초기화 (Thinking 모드)
+        self.llm = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash-exp",  # 또는 "gemini-2.5-flash-exp"
             temperature=0.7,
-            api_key=settings.openai_api_key
+            google_api_key=settings.google_api_key
         )
 
-    async def analyze_record(self, state: AnalysisState) -> AnalysisState:
+        # 그래프 빌드
+        self.graph = self._build_graph()
+
+    def _build_graph(self) -> StateGraph:
+        """LangGraph 빌드"""
+        workflow = StateGraph(QuestionGenerationState)
+
+        # 노드 추가
+        workflow.add_node("initialize", self.initialize)
+        workflow.add_node("process_category", self.process_category)
+        workflow.add_node("finalize", self.finalize)
+
+        # 엣지 추가
+        workflow.set_entry_point("initialize")
+        workflow.add_edge("initialize", "process_category")
+        workflow.add_conditional_edges(
+            "process_category",
+            self.should_continue,
+            {
+                "continue": "process_category",
+                "end": "finalize"
+            }
+        )
+        workflow.add_edge("finalize", END)
+
+        return workflow.compile()
+
+    async def initialize(self, state: QuestionGenerationState) -> QuestionGenerationState:
+        """초기화"""
+        try:
+            logger.info(f"Initializing question generation for record {state['record_id']}")
+
+            state['processed_categories'] = []
+            state['all_questions'] = []
+            state['current_category'] = self.CATEGORIES[0]
+            state['progress'] = 5
+            state['status_message'] = "질문 생성을 시작합니다..."
+            state['error'] = ""
+
+            return state
+
+        except Exception as e:
+            logger.error(f"Error in initialize: {e}")
+            state['error'] = str(e)
+            return state
+
+    async def process_category(self, state: QuestionGenerationState) -> QuestionGenerationState:
+        """카테고리별 질문 생성"""
+        try:
+            current_category = state['current_category']
+
+            logger.info(f"Processing category: {current_category}")
+
+            # 1. 벡터 DB에서 해당 카테고리 청크 검색 (여기서는 간소화하여 구현)
+            # 실제로는 pgvector를 사용한 유사도 검색 필요
+            relevant_chunks = await self._retrieve_relevant_chunks(
+                state['record_id'],
+                current_category
+            )
+
+            if not relevant_chunks:
+                # 해당 카테고리에 데이터가 없으면 스킵
+                logger.warning(f"No chunks found for category: {current_category}")
+            else:
+                # 2. Gemini로 질문 생성
+                questions = await self._generate_questions_for_category(
+                    category=current_category,
+                    chunks=relevant_chunks,
+                    target_school=state['target_school'],
+                    target_major=state['target_major'],
+                    interview_type=state['interview_type']
+                )
+
+                # 3. 생성된 질문 추가
+                state['all_questions'].extend(questions)
+                logger.info(f"Generated {len(questions)} questions for category: {current_category}")
+
+            # 4. 진행 상황 업데이트
+            state['processed_categories'].append(current_category)
+
+            # 진행률 계산
+            progress = int((len(state['processed_categories']) / len(self.CATEGORIES)) * 90)
+            state['progress'] = progress
+            state['status_message'] = f"{current_category} 영역 분석 완료..."
+
+            # 다음 카테고리 설정
+            remaining_categories = [cat for cat in self.CATEGORIES if cat not in state['processed_categories']]
+            if remaining_categories:
+                state['current_category'] = remaining_categories[0]
+
+            return state
+
+        except Exception as e:
+            logger.error(f"Error processing category {state.get('current_category')}: {e}")
+            state['error'] = str(e)
+            return state
+
+    async def finalize(self, state: QuestionGenerationState) -> QuestionGenerationState:
+        """마무리"""
+        try:
+            logger.info(f"Finalizing question generation. Total questions: {len(state['all_questions'])}")
+
+            state['progress'] = 100
+            state['status_message'] = f"질문 생성 완료! 총 {len(state['all_questions'])}개 질문이 생성되었습니다."
+            state['current_category'] = None
+
+            return state
+
+        except Exception as e:
+            logger.error(f"Error in finalize: {e}")
+            state['error'] = str(e)
+            return state
+
+    async def _retrieve_relevant_chunks(
+        self,
+        record_id: int,
+        category: str
+    ) -> List[Dict[str, Any]]:
         """
-        생기부 PDF 텍스트를 분석하여 질문 생성
+        벡터 DB에서 관련 청크 검색
+        (실제 구현 시 pgvector의 cosine similarity 검색 사용)
+        """
+        # 간소화된 구현 - 실제로는 DB 쿼리 필요
+        # from app.models import RecordChunk
+        # chunks = db.query(RecordChunk).filter(
+        #     RecordChunk.record_id == record_id,
+        #     RecordChunk.category == category
+        # ).all()
+
+        # 지금은 더미 데이터 반환
+        return [
+            {
+                "text": f"{category} 관련 예시 텍스트 데이터...",
+                "category": category
+            }
+        ]
+
+    async def _generate_questions_for_category(
+        self,
+        category: str,
+        chunks: List[Dict[str, Any]],
+        target_school: str,
+        target_major: str,
+        interview_type: str
+    ) -> List[Dict[str, Any]]:
+        """
+        카테고리별 질문 생성 (Gemini 2.5 Flash)
         """
         try:
-            logger.info(f"Analyzing record {state['record_id']}")
+            # 청크 텍스트 결합
+            context = "\n\n".join([chunk['text'] for chunk in chunks[:5]])  # 상위 5개 청크만 사용
 
             # 시스템 프롬프트
             system_prompt = f"""당신은 대학 입시 면접 준비를 위한 AI 면접관입니다.
 
-학생의 생활기록부를 분석하여 예상 면접 질문을 생성해주세요.
+학생의 생활기록부 {category} 관련 내용을 분석하여 예상 면접 질문을 생성해주세요.
 
-**목표 학교**: {state['target_school']}
-**목표 전공**: {state['target_major']}
-**전형 유형**: {state['interview_type']}
+**목표 학교**: {target_school}
+**목표 전공**: {target_major}
+**전형 유형**: {interview_type}
 
 **지침**:
-1. 생활기록부의 학생부 종합 전형을 기준으로 질문을 생성하세요.
-2. 인성, 전공적합성, 의사소통능력, 창의성 등 다양한 영역에서 질문을 만드세요.
-3. 질문은 BASIC(기본 질문)과 DEEP(심화 질문) 두 가지 난이도로 구분하세요.
-4. 각 질문에 대해 모범 답안의 핵심 포인트를 제시하세요.
-5. 최소 10개 이상의 질문을 생성하세요.
+1. {category} 영역에서 핵심적인 질문 3~5개를 생성하세요.
+2. 질문은 구체적이고 명확해야 합니다.
+3. 각 질문에 대해 모범 답안의 핵심 포인트를 제시하세요.
+4. 질문의 목적을 명확히 하세요.
 
 **출력 형식** (JSON):
 {{
     "questions": [
         {{
-            "category": "인성",
-            "content": "동아리 활동 중 갈등을 해결한 구체적인 사례를 말씀해 주세요.",
+            "category": "{category}",
+            "content": "질문 내용",
             "difficulty": "BASIC",
-            "model_answer": "갈등 상황, 본인의 역할, 해결 과정, 배운 점을 구체적으로 언급"
+            "model_answer": "모범 답안 핵심 포인트",
+            "question_purpose": "질문의 목적"
         }}
     ]
 }}"""
 
             # 사용자 프롬프트
-            user_prompt = f"""다음은 학생의 생활기록부 내용입니다:
+            user_prompt = f"""다음은 학생 생활기록부의 {category} 관련 내용입니다:
 
-{state['pdf_text'][:8000]}
+{context}
 
-이 생활기록부를 바탕으로 위의 지침에 따라 예상 면접 질문을 생성해주세요. 반드시 JSON 형식으로만 답변해주세요."""
+이 내용을 바탕으로 위의 지침에 따라 예상 면접 질문을 생성해주세요. 반드시 JSON 형식으로만 답변해주세요."""
 
             # LLM 호출
             messages = [
@@ -82,25 +244,16 @@ class RecordAnalysisGraph:
             # 응답 파싱
             questions_data = self._parse_response(response.content)
 
-            state['questions'] = questions_data
-            state['error'] = ""
-
-            logger.info(f"Generated {len(questions_data)} questions for record {state['record_id']}")
-
-            return state
+            return questions_data
 
         except Exception as e:
-            logger.error(f"Error analyzing record: {e}")
-            state['error'] = str(e)
-            state['questions'] = []
-            return state
+            logger.error(f"Error generating questions for {category}: {e}")
+            return []
 
     def _parse_response(self, content: str) -> List[Dict[str, Any]]:
-        """
-        LLM 응답을 파싱하여 질문 리스트 추출
-        """
+        """LLM 응답 파싱"""
         try:
-            # JSON 추출 시도
+            # JSON 추출
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
@@ -110,14 +263,28 @@ class RecordAnalysisGraph:
             return data.get("questions", [])
 
         except Exception as e:
-            logger.error(f"Error parsing LLM response: {e}")
+            logger.error(f"Error parsing response: {e}")
             return []
 
-    async def run(self, state: AnalysisState) -> AnalysisState:
+    def should_continue(self, state: QuestionGenerationState) -> str:
+        """계속 진행 여부 판단"""
+        if state.get('error'):
+            return "end"
+
+        remaining = [cat for cat in self.CATEGORIES if cat not in state.get('processed_categories', [])]
+        if remaining:
+            return "continue"
+
+        return "end"
+
+    async def astream(self, state: QuestionGenerationState):
         """
-        그래프 실행
+        비동기 스트리밍 실행 (SSE용)
         """
-        return await self.analyze_record(state)
+        async for event in self.graph.astream(state):
+            # 각 노드 실행 후 상태를 yield
+            for node_name, node_state in event.items():
+                yield node_state
 
 
-record_analysis_graph = RecordAnalysisGraph()
+question_generation_graph = QuestionGenerationGraph()

@@ -17,7 +17,6 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     student_records = relationship("StudentRecord", back_populates="user", cascade="all, delete-orphan")
-    interview_sessions = relationship("InterviewSession", back_populates="user", cascade="all, delete-orphan")
 
 
 class StudentRecord(Base):
@@ -30,16 +29,33 @@ class StudentRecord(Base):
     target_school = Column(String(100))
     target_major = Column(String(100))
     interview_type = Column(String(50))
-    status = Column(String(20), default="PENDING")  # PENDING, ANALYZING, READY, FAILED
+    status = Column(String(20), default="PENDING")  # PENDING, VECTORizing, READY, ERROR
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    analyzed_at = Column(DateTime(timezone=True))
+    vectorized_at = Column(DateTime(timezone=True))
 
     user = relationship("User", back_populates="student_records")
+    record_chunks = relationship("RecordChunk", back_populates="record", cascade="all, delete-orphan")
     questions = relationship("Question", back_populates="record", cascade="all, delete-orphan")
-    interview_sessions = relationship("InterviewSession", back_populates="record", cascade="all, delete-orphan")
+
+
+class RecordChunk(Base):
+    """벡터화된 생기부 청크 테이블"""
+    __tablename__ = "record_chunks"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    chunk_text = Column(Text, nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    category = Column(String(50), nullable=False, index=True)  # 출결, 성적, 세특, etc.
+    metadata = Column(JSON)  # 추가 메타데이터
+    embedding = Column(Text)  # 벡터 데이터 (텍스트로 저장, pgvector 타입은 마이그레이션에서 처리)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    record = relationship("StudentRecord", back_populates="record_chunks")
 
 
 class Question(Base):
+    """생성된 질문 테이블"""
     __tablename__ = "questions"
 
     id = Column(BigInteger, primary_key=True, index=True)
@@ -49,26 +65,7 @@ class Question(Base):
     difficulty = Column(String(20), nullable=False, index=True)  # BASIC, DEEP
     is_bookmarked = Column(Boolean, default=False)
     model_answer = Column(Text)
+    question_purpose = Column(Text)  # 질문 목적
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     record = relationship("StudentRecord", back_populates="questions")
-
-
-class InterviewSession(Base):
-    __tablename__ = "interview_sessions"
-
-    id = Column(String(100), primary_key=True)
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False)
-    thread_id = Column(String(255), nullable=False, index=True)
-    intensity = Column(String(20), nullable=False)  # BASIC, DEEP
-    mode = Column(String(20), nullable=False)  # TEXT, VOICE
-    status = Column(String(20), default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, ANALYZING
-    interview_logs = Column(JSON)  # 대화 로그
-    final_report = Column(JSON)  # 종합 리포트
-    started_at = Column(DateTime(timezone=True), server_default=func.now())
-    completed_at = Column(DateTime(timezone=True))
-    limit_time_seconds = Column(Integer, default=900)  # 15분
-
-    user = relationship("User", back_populates="interview_sessions")
-    record = relationship("StudentRecord", back_populates="interview_sessions")
