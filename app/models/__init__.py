@@ -10,9 +10,9 @@ class User(Base):
     id = Column(BigInteger, primary_key=True, index=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password = Column(String(255), nullable=False)
-    name = Column(String(50), nullable=False)
-    university = Column(String(100), nullable=False)
+    name = Column(String(100), nullable=False)
     marketing_agreement = Column(Boolean, default=False)
+    role = Column(String(20), default='USER')
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -25,13 +25,13 @@ class StudentRecord(Base):
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
-    s3_key = Column(String(512), nullable=False)
+    track = Column(String(100))  # 인문/자연 등
     target_school = Column(String(100))
     target_major = Column(String(100))
-    interview_type = Column(String(50))
-    status = Column(String(20), default="PENDING")  # PENDING, VECTORizing, READY, ERROR
+    interview_type = Column(String(100))  # 종합/교과 등
+    s3_key = Column(String(500), nullable=False)
+    status = Column(String(50), default="PENDING")  # PENDING, READY, FAILED
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    vectorized_at = Column(DateTime(timezone=True))
 
     user = relationship("User", back_populates="student_records")
     record_chunks = relationship("RecordChunk", back_populates="record", cascade="all, delete-orphan")
@@ -60,12 +60,25 @@ class Question(Base):
 
     id = Column(BigInteger, primary_key=True, index=True)
     record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # 카테고리: 출결, 성적, 세특, 창체, 행특
     category = Column(String(50), nullable=False, index=True)
+    
+    # 난이도: 기본, 심화, 압박
+    difficulty = Column(String(20), default='기본', nullable=False, index=True)
+    
+    # 질문 내용
     content = Column(Text, nullable=False)
-    difficulty = Column(String(20), nullable=False, index=True)  # BASIC, DEEP
-    is_bookmarked = Column(Boolean, default=False)
+    
+    # 질문 목적 및 답변 포인트
+    purpose = Column(String(255))
+    answer_points = Column(Text)
+    
+    # 모범 답변 및 기준
     model_answer = Column(Text)
-    question_purpose = Column(Text)  # 질문 목적
+    evaluation_criteria = Column(Text)
+    
+    is_bookmarked = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     record = relationship("StudentRecord", back_populates="questions")

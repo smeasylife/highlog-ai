@@ -22,11 +22,14 @@ class GenerateQuestionsRequest(BaseModel):
 
 class QuestionData(BaseModel):
     """생성된 질문 데이터"""
-    category: str = Field(..., description="질문 카테고리 (출결, 성적, 세특 등)")
+    category: str = Field(..., description="질문 카테고리 (출결, 성적, 세특, 창체, 행특)")
     content: str = Field(..., description="질문 내용")
-    difficulty: str = Field(..., description="난이도 (BASIC, DEEP)")
+    difficulty: str = Field(..., description="난이도 (기본, 심화, 압박)")
+    purpose: Optional[str] = Field(None, description="질문 목적")
+    answer_points: Optional[str] = Field(None, description="답변 포인트")
     model_answer: Optional[str] = Field(None, description="모범 답안")
-    question_purpose: Optional[str] = Field(None, description="질문 목적")
+    evaluation_criteria: Optional[str] = Field(None, description="평가 기준")
+
 
 
 class SSEProgressEvent(BaseModel):

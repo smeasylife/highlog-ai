@@ -49,13 +49,11 @@ async def vectorize_record(
             raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
 
         # 상태 검증
-        if record.status == "VECTORIZING":
-            raise HTTPException(status_code=409, detail="현재 벡터화가 진행 중입니다.")
         if record.status == "READY":
             raise HTTPException(status_code=409, detail="이미 벡터화가 완료되었습니다.")
 
-        # 상태 변경
-        record.status = "VECTORIZING"
+        # 상태 변경 (백그라운드로 처리하므로 바로 READY로 변경)
+        record.status = "READY"
         db.commit()
 
         # 백그라운드 태스크로 벡터화 실행
@@ -112,8 +110,6 @@ async def _process_vectorization(
         ).first()
 
         record.status = "READY"
-        from datetime import datetime
-        record.vectorized_at = datetime.now()
 
         db.commit()
 
@@ -127,7 +123,7 @@ async def _process_vectorization(
             record = db.query(StudentRecord).filter(
                 StudentRecord.id == record_id
             ).first()
-            record.status = "ERROR"
+            record.status = "FAILED"
             db.commit()
         except:
             pass
@@ -221,9 +217,11 @@ async def generate_questions(
                             record_id=record_id,
                             category=q.get('category', '기본'),
                             content=q['content'],
-                            difficulty=q.get('difficulty', 'BASIC'),
+                            difficulty=q.get('difficulty', '기본'),
+                            purpose=q.get('purpose'),
+                            answer_points=q.get('answer_points'),
                             model_answer=q.get('model_answer'),
-                            question_purpose=q.get('question_purpose')
+                            evaluation_criteria=q.get('evaluation_criteria')
                         )
                         db.add(question)
 
@@ -308,8 +306,10 @@ async def get_questions(
                     "category": q.category,
                     "content": q.content,
                     "difficulty": q.difficulty,
+                    "purpose": q.purpose,
+                    "answerPoints": q.answer_points,
                     "modelAnswer": q.model_answer,
-                    "questionPurpose": q.question_purpose,
+                    "evaluationCriteria": q.evaluation_criteria,
                     "isBookmarked": q.is_bookmarked,
                     "createdAt": q.created_at.isoformat() if q.created_at else None
                 }
@@ -345,8 +345,7 @@ async def get_record_status(
         return {
             "recordId": record_id,
             "status": record.status,
-            "createdAt": record.created_at.isoformat() if record.created_at else None,
-            "vectorizedAt": record.vectorized_at.isoformat() if record.vectorized_at else None
+            "createdAt": record.created_at.isoformat() if record.created_at else None
         }
 
     except HTTPException:

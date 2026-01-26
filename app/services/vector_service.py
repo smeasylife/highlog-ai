@@ -99,10 +99,25 @@ class VectorService:
             '출결': ['출결', '결석', '지각', '조퇴', '수업'],
             '성적': ['성적', '과목', '이수', '단위', '원점수', '표준점수'],
             '세특': ['세부능력', '소개', '교과', '주제'],
-            '수상': ['수상', '경시대회', '올림피아드', '대회'],
-            '독서': ['독서', '책', '저자', '출판사'],
-            '진로': ['진로', '활동', '동아리', '봉사', '체험']
+            '창체': ['창의적체험활동', '동아리', '진로', '봉사', '체험'],
+            '행특': ['행동특성', '태도', '품행', '협동', '책임']
         }
+
+        # 텍스트를 문단 단위로 분리
+        paragraphs = re.split(r'\n\s*\n', pdf_text.strip())
+
+        current_index = 0
+        for para in paragraphs:
+            para = para.strip()
+            if not para or len(para) < 10:  # 너무 짧은 문단은 제외
+                continue
+
+            # 카테고리 분류
+            category = '세특'  # 기본값
+            for cat, keywords in category_keywords.items():
+                if any(keyword in para for keyword in keywords):
+                    category = cat
+                    break
 
         # 텍스트를 문단 단위로 분리
         paragraphs = re.split(r'\n\s*\n', pdf_text.strip())

@@ -36,7 +36,7 @@ class QuestionGenerationGraph:
     """벌크 질문 생성 그래프 (SSE 스트리밍 지원)"""
 
     # 카테고리 정의
-    CATEGORIES = ["출결", "성적", "세특", "수상", "독서", "진로", "기타"]
+    CATEGORIES = ["출결", "성적", "세특", "창체", "행특"]
 
     def __init__(self):
         # Gemini 2.5 Flash 초기화 (Thinking 모드)
@@ -210,8 +210,13 @@ class QuestionGenerationGraph:
 **지침**:
 1. {category} 영역에서 핵심적인 질문 3~5개를 생성하세요.
 2. 질문은 구체적이고 명확해야 합니다.
-3. 각 질문에 대해 모범 답안의 핵심 포인트를 제시하세요.
+3. 각 질문에 대해 모범 답안, 답변 포인트, 평가 기준을 제시하세요.
 4. 질문의 목적을 명확히 하세요.
+
+**난이도 구분**:
+- 기본: 기본적인 질문
+- 심화: 깊이 있는 질문
+- 압박: 압박감 있는 질문
 
 **출력 형식** (JSON):
 {{
@@ -219,9 +224,11 @@ class QuestionGenerationGraph:
         {{
             "category": "{category}",
             "content": "질문 내용",
-            "difficulty": "BASIC",
-            "model_answer": "모범 답안 핵심 포인트",
-            "question_purpose": "질문의 목적"
+            "difficulty": "기본",
+            "purpose": "질문의 목적",
+            "answer_points": "답변 포인트",
+            "model_answer": "모범 답안",
+            "evaluation_criteria": "평가 기준"
         }}
     ]
 }}"""
