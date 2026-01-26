@@ -23,15 +23,6 @@ app.add_middleware(
 app.include_router(records.router, prefix="/api/records", tags=["records"])
 
 
-@app.get("/")
-async def root():
-    return {
-        "message": "HighLog AI Service",
-        "version": settings.app_version,
-        "status": "running"
-    }
-
-
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
