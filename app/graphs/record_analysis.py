@@ -2,7 +2,9 @@ from typing import TypedDict, List, Dict, Any, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.postgres import PostgresSaver
 from config import settings
+from app.database import get_langgraph_connection_string
 import logging
 import json
 from datetime import datetime
@@ -36,12 +38,21 @@ class QuestionGenerationGraph:
     """벌크 질문 생성 그래프 (SSE 스트리밍 지원)"""
 
     # 카테고리 정의
-    CATEGORIES = ["출결", "성적", "세특", "창체", "행특"]
+    CATEGORIES = ["성적", "세특", "창체", "행특", "기타"]
 
     def __init__(self):
-        # Gemini 2.5 Flash 초기화 (Thinking 모드)
+        # PostgreSQL Checkpointer 초기화
+        try:
+            connection_string = get_langgraph_connection_string()
+            self.checkpointer = PostgresSaver.from_conn_string(connection_string)
+            logger.info("LangGraph PostgreSQL Checkpointer initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize checkpointer: {e}")
+            self.checkpointer = None
+        
+        # Gemini 2.5 Flash-Lite 초기화
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash-exp",  # 또는 "gemini-2.5-flash-exp"
+            model="gemini-2.5-flash-lite",
             temperature=0.7,
             google_api_key=settings.google_api_key
         )
@@ -71,7 +82,8 @@ class QuestionGenerationGraph:
         )
         workflow.add_edge("finalize", END)
 
-        return workflow.compile()
+        # Checkpointer와 함께 컴파일
+        return workflow.compile(checkpointer=self.checkpointer)
 
     async def initialize(self, state: QuestionGenerationState) -> QuestionGenerationState:
         """초기화"""
@@ -166,22 +178,41 @@ class QuestionGenerationGraph:
     ) -> List[Dict[str, Any]]:
         """
         벡터 DB에서 관련 청크 검색
-        (실제 구현 시 pgvector의 cosine similarity 검색 사용)
         """
-        # 간소화된 구현 - 실제로는 DB 쿼리 필요
-        # from app.models import RecordChunk
-        # chunks = db.query(RecordChunk).filter(
-        #     RecordChunk.record_id == record_id,
-        #     RecordChunk.category == category
-        # ).all()
-
-        # 지금은 더미 데이터 반환
-        return [
-            {
-                "text": f"{category} 관련 예시 텍스트 데이터...",
-                "category": category
-            }
-        ]
+        from app.models import RecordChunk
+        from app.database import get_db
+        
+        try:
+            # DB 세션 생성
+            db_generator = get_db()
+            db = next(db_generator)
+            
+            try:
+                # 카테고리별 청크 조회 (record_id와 category로 필터링)
+                chunks = db.query(RecordChunk).filter(
+                    RecordChunk.record_id == record_id,
+                    RecordChunk.category == category
+                ).order_by(RecordChunk.chunk_index).all()
+                
+                # 딕셔너리 형태로 변환
+                result = [
+                    {
+                        "text": chunk.chunk_text,
+                        "category": chunk.category,
+                        "metadata": chunk.metadata
+                    }
+                    for chunk in chunks
+                ]
+                
+                logger.info(f"Retrieved {len(result)} chunks for category {category}")
+                return result
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error retrieving chunks for category {category}: {e}")
+            return []
 
     async def _generate_questions_for_category(
         self,

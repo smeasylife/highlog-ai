@@ -1,13 +1,13 @@
 📄 claude.md (Enterprise Button-Separated Version)
 1. Project Overview
-Goal: Gemini 2.5 Flash/Pro 기반의 생기부 맞춤형 면접 플랫폼.
+Goal: Gemini 2.5 Flash-Lite 기반의 생기부 맞춤형 면접 플랫폼.
 
 Structure: '업로드/벡터화'와 '질문 생성' 프로세스를 분리하여 운영 효율성 극대화.
 
 2. Updated Tech Stack
 AI Engine: Python 3.11+ / FastAPI / LangGraph
 
-AI Model: Gemini 2.5 Flash (질문 생성 - Thinking 모드 활성화), Gemini 2.5/3 Pro (최종 리포트 분석).
+AI Model: Gemini 2.5 Flash-Lite (청킹, 질문 생성, 면접 등 전 과정).
 
 Embedding: Google text-embedding-004.
 
@@ -19,7 +19,9 @@ Vector DB: PostgreSQL 15 + pgvector (Metadata Filter: record_id, category 필수
 
 S3 Upload: Client → S3 직접 업로드 (Presigned URL).
 
-Ingestion: FastAPI가 S3에서 PDF 로드 → Chunking → Gemini Embedding 수행.
+Ingestion: FastAPI가 S3에서 PDF → 이미지 변환 (PyMuPDF) → Gemini 2.5 Flash-Lite로 카테고리별 청킹 → Embedding 수행.
+
+Chunking Rules: Gemini 2.5 Flash-Lite가 자동으로 카테고리 분류 (성적, 세특, 창체, 행특, 기타 5개) 및 개인정보 삭제.
 
 Vector Store: 각 청크를 record_chunks 테이블에 저장하되, **record_id**를 메타데이터로 반드시 포함.
 
@@ -30,18 +32,18 @@ Status Update: student_records 테이블의 상태를 READY로 변경.
 
 Step 1: SSE Handshake - Spring Boot와 FastAPI 간 SSE 스트림 연결.
 
-Step 2: Metadata Search - 넘겨받은 record_id를 기반으로 벡터 DB에서 출결, 성적, 세특 등 카테고리별 데이터 추출.
+Step 2: Metadata Search - 넘겨받은 record_id를 기반으로 벡터 DB에서 카테고리별(성적, 세특, 창체, 행특, 기타) 청크를 record_chunks 테이블에서 직접 조회.
 
-Step 3: LangGraph Generator - Gemini 2.5 Flash가 영역별 질문(5개 이하) 및 모범 답안, 질문 목적을 생성.
+Step 3: LangGraph Generator - Gemini 2.5 Flash-Lite가 영역별 질문(5개 이하) 및 모범 답안, 질문 목적을 생성.
 
 Step 4: Progress Streaming - 각 노드 완료 시 진행률(%)과 상태 메시지 yield.
 
-(예: 20% - 출결 분석 중... -> 50% - 세특 질문 생성 중...)
+(예: 20% - 성적 분석 중... -> 50% - 세특 질문 생성 중...)
 
 Step 5: Finalization - 생성된 질문 세트를 questions 테이블에 벌크 저장 후 스트림 종료.
 
 4. Key Development Rules
-Gemini Native Audio: 면접 시 별도 STT 없이 음성 파일을 직접 Gemini 2.5 Flash에 전달.
+Gemini Native Audio: 면접 시 별도 STT 없이 음성 파일을 직접 Gemini 2.5 Flash-Lite에 전달.
 
 비용: 10분 면접 기준 약 26원 (1초당 32토큰 계산).
 

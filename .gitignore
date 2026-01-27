@@ -1,6 +1,7 @@
 cat > .gitignore << 'EOF'
 # Environment variables
 .env
+highschool.pdf
 
 # Config
 config.py

@@ -20,8 +20,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ==================== Phase 1: 벡터화 (Upload 버튼 트리거) ====================
-
 @router.post("/{record_id}/vectorize")
 async def vectorize_record(
     record_id: int,
@@ -88,15 +86,15 @@ async def _process_vectorization(
     try:
         logger.info(f"Processing vectorization for record {record_id}")
 
-        # 1. PDF 텍스트 추출
-        pdf_text = await pdf_service.extract_text_from_s3(s3_key)
+        # 1. PDF 이미지 변환 (S3에서 직접)
+        pdf_images = pdf_service.convert_pdf_to_images_from_s3(s3_key)
 
-        if not pdf_text:
-            raise Exception("PDF 텍스트 추출 실패")
+        if not pdf_images:
+            raise Exception("PDF 이미지 변환 실패")
 
-        # 2. 벡터화 (청킹 + 임베딩 + DB 저장)
+        # 2. 벡터화 (Gemini 청킹 + 임베딩 + DB 저장)
         success, message = await vector_service.vectorize_pdf(
-            pdf_text=pdf_text,
+            pdf_images=pdf_images,
             record_id=record_id,
             db=db
         )

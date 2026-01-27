@@ -1,8 +1,5 @@
-import pdfplumber
-from typing import Optional
+import io
 import logging
-import tempfile
-import os
 
 from app.services.s3_service import s3_service
 
@@ -10,63 +7,67 @@ logger = logging.getLogger(__name__)
 
 
 class PDFService:
-    def extract_text_from_s3(self, s3_key: str) -> Optional[str]:
+    """PDF 처리 서비스 - PyMuPDF 기반 이미지 변환 전담"""
+    
+    def __init__(self):
+        import fitz  # PyMuPDF
+        self.fitz = fitz
+    
+    def convert_pdf_to_images_from_s3(self, s3_key: str, zoom: float = 2.0):
         """
-        S3에서 PDF 파일을 다운로드하고 텍스트를 추출합니다.
-
+        S3에서 PDF 파일을 스트림으로 가져와 고화질 이미지로 변환합니다.
+        
         Args:
             s3_key: S3 객체 키
-
+            zoom: 확대 배율 (기본 2배 = DPI 144)
+            
         Returns:
-            추출된 텍스트 (실패 시 None)
+            PIL 이미지 리스트 (실패 시 None)
         """
-        # 임시 파일 생성
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-            tmp_path = tmp_file.name
-
         try:
-            # S3에서 다운로드
-            if not s3_service.download_file(s3_key, tmp_path):
+            from PIL import Image
+            import io
+            
+            # S3에서 파일 스트림 가져오기
+            file_stream = s3_service.get_file_stream(s3_key)
+            
+            if file_stream is None:
+                logger.error(f"Failed to get file stream from S3: {s3_key}")
                 return None
-
-            # 텍스트 추출
-            text = self._extract_text_from_pdf(tmp_path)
-
-            return text
-
+            
+            # PDF 바이트 읽기
+            pdf_bytes = file_stream.read()
+            pdf_file = io.BytesIO(pdf_bytes)
+            
+            # PyMuPDF로 PDF 열기
+            doc = self.fitz.open(stream=pdf_file, filetype="pdf")
+            total_pages = len(doc)
+            logger.info(f"Converting {total_pages} pages to images (zoom={zoom}x)")
+            
+            images = []
+            for i, page in enumerate(doc, 1):
+                # 2배 확대 (화질 향상)
+                mat = self.fitz.Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix=mat)
+                
+                # PIL 이미지로 변환
+                img_bytes = pix.tobytes("png")
+                img = Image.open(io.BytesIO(img_bytes))
+                images.append(img)
+                
+                logger.debug(f"Page {i}/{total_pages} converted to image")
+            
+            doc.close()
+            logger.info(f"Successfully converted {len(images)} pages to images")
+            
+            return images
+            
         except Exception as e:
-            logger.error(f"Error extracting text from PDF: {e}")
+            logger.error(f"Error converting PDF to images: {e}")
             return None
 
-        finally:
-            # 임시 파일 삭제
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
 
-    def _extract_text_from_pdf(self, pdf_path: str) -> Optional[str]:
-        """
-        로컬 PDF 파일에서 텍스트를 추출합니다.
-
-        Args:
-            pdf_path: 로컬 PDF 파일 경로
-
-        Returns:
-            추출된 텍스트
-        """
-        try:
-            text_parts = []
-
-            with pdfplumber.open(pdf_path) as pdf:
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        text_parts.append(text)
-
-            return "\n".join(text_parts)
-
-        except Exception as e:
-            logger.error(f"Error processing PDF: {e}")
-            return None
+pdf_service = PDFService()
 
 
 pdf_service = PDFService()
