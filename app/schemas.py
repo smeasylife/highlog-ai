@@ -5,6 +5,15 @@ from typing import Optional, List
 
 # ========== Request Schemas ==========
 
+class CreateRecordRequest(BaseModel):
+    """생기부 등록 요청"""
+    title: str = Field(..., description="생기부 제목")
+    s3Key: str = Field(..., description="S3 객체 키")
+    targetSchool: Optional[str] = Field(None, description="목표 학교")
+    targetMajor: Optional[str] = Field(None, description="목표 전공")
+    interviewType: Optional[str] = Field("종합전형", description="전형 유형")
+
+
 class VectorizeRequest(BaseModel):
     """생기부 벡터화 요청"""
     record_id: int = Field(..., description="생기부 ID")

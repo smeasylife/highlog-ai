@@ -11,7 +11,7 @@ from app.models import StudentRecord, Question
 from app.services.pdf_service import pdf_service
 from app.services.vector_service import vector_service
 from app.graphs.record_analysis import question_generation_graph, QuestionGenerationState
-from app.schemas import VectorizeRequest, GenerateQuestionsRequest, SSEProgressEvent, QuestionData
+from app.schemas import CreateRecordRequest, VectorizeRequest, GenerateQuestionsRequest, SSEProgressEvent, QuestionData
 
 import logging
 
@@ -23,6 +23,47 @@ router = APIRouter()
 async def send_progress(progress: int, queue: asyncio.Queue):
     """진행률을 큐에 전송하는 헬퍼 함수"""
     await queue.put(progress)
+
+
+@router.post("/api/records")
+async def create_record(
+    request: CreateRecordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    생기부 등록 엔드포인트
+
+    S3 업로드 완료 후 생기부 정보를 저장하고,
+    자동으로 벡터화를 진행합니다.
+    """
+    try:
+        # 1. DB에 생기부 저장
+        record = StudentRecord(
+            title=request.title,
+            s3_key=request.s3Key,
+            target_school=request.targetSchool,
+            target_major=request.targetMajor,
+            interview_type=request.interviewType,
+            status="PENDING"
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
+        # 2. SSE 응답 반환 (벡터화 포함)
+        return StreamingResponse(
+            record_creation_stream(record, db),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating record: {e}")
+        raise HTTPException(status_code=500, detail=f"생기부 등록 중 오류가 발생했습니다: {str(e)}")
 
 
 @router.post("/{record_id}/vectorize")
@@ -129,6 +170,93 @@ async def vectorization_stream(record: StudentRecord, db: Session):
 
     except Exception as e:
         logger.error(f"Error in vectorization stream: {e}")
+        error_event = SSEProgressEvent(
+            type="error",
+            progress=0
+        )
+        yield f"data: {error_event.model_dump_json()}\n\n"
+
+
+def create_sse_event(progress: int) -> str:
+    """
+    SSE 이벤트 생성 헬퍼 함수
+    """
+    event = SSEProgressEvent(
+        type="processing",
+        progress=progress
+    )
+    return f"data: {event.model_dump_json()}\n\n"
+
+
+async def record_creation_stream(record: StudentRecord, db: Session):
+    """
+    생기부 등록 + 벡터화 SSE 스트림
+
+    Args:
+        record: StudentRecord 객체
+        db: 데이터베이스 세션
+    """
+    try:
+        # 시작 이벤트 전송
+        yield create_sse_event(0)
+
+        # 진행률 큐 생성
+        progress_queue = asyncio.Queue()
+
+        # 벡터화 작업을 백그라운드 태스크로 실행
+        vectorization_task = asyncio.create_task(
+            _process_vectorization_with_progress(
+                record_id=record.id,
+                s3_key=record.s3_key,
+                db=db,
+                progress_queue=progress_queue
+            )
+        )
+
+        # 큐에서 진행률을 실시간으로 수신하여 전송
+        while not vectorization_task.done() or not progress_queue.empty():
+            try:
+                progress = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
+                yield create_sse_event(progress)
+            except asyncio.TimeoutError:
+                continue
+
+        # 작업 결과 확인
+        success, message, total_chunks = await vectorization_task
+
+        if not success:
+            # 실패 시 상태 업데이트
+            record.status = "FAILED"
+            db.commit()
+
+            error_event = SSEProgressEvent(
+                type="error",
+                progress=0
+            )
+            yield f"data: {error_event.model_dump_json()}\n\n"
+            return
+
+        # 완료 시 상태 업데이트
+        record.status = "READY"
+        db.commit()
+
+        # 완료 이벤트 전송
+        complete_event = SSEProgressEvent(
+            type="complete",
+            progress=100
+        )
+        yield f"data: {complete_event.model_dump_json()}\n\n"
+
+    except Exception as e:
+        logger.error(f"Error in record creation stream: {e}")
+
+        # 실패 상태로 변경
+        try:
+            record.status = "FAILED"
+            db.commit()
+        except:
+            pass
+
         error_event = SSEProgressEvent(
             type="error",
             progress=0
