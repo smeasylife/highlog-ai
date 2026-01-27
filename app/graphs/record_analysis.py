@@ -198,8 +198,7 @@ class QuestionGenerationGraph:
                 result = [
                     {
                         "text": chunk.chunk_text,
-                        "category": chunk.category,
-                        "metadata": chunk.metadata
+                        "category": chunk.category
                     }
                     for chunk in chunks
                 ]

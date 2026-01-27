@@ -39,7 +39,6 @@ class PDFService:
             pdf_bytes = file_stream.read()
             pdf_file = io.BytesIO(pdf_bytes)
             
-            # PyMuPDF로 PDF 열기
             doc = self.fitz.open(stream=pdf_file, filetype="pdf")
             total_pages = len(doc)
             logger.info(f"Converting {total_pages} pages to images (zoom={zoom}x)")

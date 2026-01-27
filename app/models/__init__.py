@@ -46,8 +46,7 @@ class RecordChunk(Base):
     record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False)
-    category = Column(String(50), nullable=False, index=True)  # 출결, 성적, 세특, etc.
-    metadata = Column(JSON)  # 추가 메타데이터
+    category = Column(String(50), nullable=False, index=True)  # 성적, 세특, 창체, 행특, 기타
     embedding = Column(Text)  # 벡터 데이터 (텍스트로 저장, pgvector 타입은 마이그레이션에서 처리)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

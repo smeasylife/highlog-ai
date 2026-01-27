@@ -18,7 +18,7 @@ class VectorService:
         
         self.client = genai.Client(api_key=settings.google_api_key)
         self.types = types
-        self.embedding_model = 'text-embedding-004'
+        self.embedding_model = 'text-multilingual-embedding-002'
         self.chat_model = 'gemini-2.5-flash-lite'  # 청킹용 모델
     
     async def vectorize_pdf(
@@ -75,7 +75,6 @@ class VectorService:
                         chunk_text=chunk_data['text'],
                         chunk_index=chunk_data['index'],
                         category=chunk_data['category'],
-                        metadata=chunk_data.get('metadata', {}),
                         embedding=str(embedding)
                     )
                     db.add(chunk)
@@ -124,6 +123,15 @@ class VectorService:
 
 ## 📋 청킹 규칙
 
+0. **🚨 정확성 원칙 (가장 중요)** - **Hallucination 금지**:
+   - **이미지에 있는 텍스트만 있는 그대로 추출하세요** - 절대 추측하지 마세요
+   - 텍스트의 **띄어쓰기, 문장 부호, 줄바꿈을 그대로 유지**하세요
+   - **내용을 추가, 요약, paraphrase하지 마세요** - 원문 그대로만 추출
+   - 불분명하거나 잘린 텍스트는 **[일부 텍스트 누락]**으로 표시하고 추측하지 마세요
+   - 표의 숫자, 날짜, 점수 등 **모든 데이터를 정확하게 그대로 복사**하세요
+   - OCR 결과가 불확실해도 **원문 형태를 최대한 유지**하세요
+   - 문맥을 상상하거나 내용을 보충하지 **절대 하지 마세요**
+
 1. **개인정보 삭제**: 이름, 생년월일, 주소, 전화번호 등 개인 식별 정보는 **모두 삭제**하세요
 
 2. **카테고리 분류**: 다음 5개 카테고리 중 하나로만 분류
@@ -138,9 +146,8 @@ class VectorService:
    - 주제가 바뀌면 500자 미만이라도 분할
 
 4. **표 데이터**: 표는 **마크다운 테이블 형식**으로 변환
+   - **표의 모든 셀 내용을 정확하게 그대로 복사** - 요약하지 마세요
    - 여러 페이지에 걸친 표는 하나로 병합
-
-5. **메타데이터**: 각 청크의 메타데이터에 학년, 학기, 활동 유형 등 포함
 
 ## 🎯 출력 형식
 
@@ -151,21 +158,11 @@ class VectorService:
   "records": [
     {
       "category": "성적",
-      "content": "| 학년 | 과목 | 단위 | 원점수 | 표준점수 |\\\\n|------|------|------|--------|----------|\\\\n| 2학년 | 국어 | 5 | 85 | 78 |",
-      "metadata": {
-        "grade": 2,
-        "semester": 1,
-        "page_range": [1, 2]
-      }
+      "content": "| 학년 | 과목 | 단위 | 원점수 | 표준점수 |\\\\n|------|------|------|--------|----------|\\\\n| 2학년 | 국어 | 5 | 85 | 78 |"
     },
     {
       "category": "세특",
-      "content": "### 국어과\\\\n**주제**: 한국 현대 소설의 서사 구조 연구\\\\n**활동 내용**: 김동인의 '운수 좋은 날'을 분석하며...",
-      "metadata": {
-        "subject": "국어",
-        "grade": 2,
-        "semester": 1
-      }
+      "content": "### 국어과\\\\n**주제**: 한국 현대 소설의 서사 구조 연구\\\\n**활동 내용**: 김동인의 '운수 좋은 날'을 분석하며..."
     }
   ]
 }
@@ -173,11 +170,12 @@ class VectorService:
 
 ## ⚠️ 주의사항
 
+- **🚨 절대 텍스트를 추측하지 마세요 - 이미지에 보이는 내용만 정확하게 추출하세요**
+- **요약, paraphrase, 내용 보충을 일절 하지 마세요 - 원문 그대로만 복사하세요**
 - JSON 외의 텍스트는 절대 출력하지 마세요
 - 개인정보는 모두 삭제하세요
 - 표의 데이터는 손실 없이 정확하게 변환하세요
 - 청크의 content 필드는 마크다운 형식을 유지하세요
-- 메타데이터는 가능한 한 상세히 기록하세요
 
 이제 생활기록부 이미지를 분석해주세요."""
         
@@ -207,8 +205,7 @@ class VectorService:
                 chunks.append({
                     'index': i,
                     'text': record['content'],
-                    'category': record['category'],
-                    'metadata': record.get('metadata', {})
+                    'category': record['category']
                 })
             
             return chunks

@@ -50,8 +50,7 @@ async def vectorize_record(
         if record.status == "READY":
             raise HTTPException(status_code=409, detail="이미 벡터화가 완료되었습니다.")
 
-        # 상태 변경 (백그라운드로 처리하므로 바로 READY로 변경)
-        record.status = "READY"
+        record.status = "PENDING"
         db.commit()
 
         # 백그라운드 태스크로 벡터화 실행
@@ -65,7 +64,7 @@ async def vectorize_record(
         return {
             "message": "벡터화가 시작되었습니다.",
             "recordId": record_id,
-            "status": "VECTORIZING"
+            "status": "PENDING"
         }
 
     except HTTPException:
