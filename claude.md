@@ -15,11 +15,20 @@ Vector DB: PostgreSQL 15 + pgvector (Metadata Filter: record_id, category 필수
 
 3. Separated Workflow Design
 3.1 Phase 1: Upload & Vectorization (Trigger: Upload Button)
-생기부 등록 시점에 데이터베이스를 미리 구축합니다.
+생기부 등록 시점에 데이터베이스를 미리 구축합니다. **SSE 스트리밍으로 실시간 진행률 전송**.
 
 S3 Upload: Client → S3 직접 업로드 (Presigned URL).
 
-Ingestion: FastAPI가 S3에서 PDF → 이미지 변환 (PyMuPDF) → Gemini 2.5 Flash-Lite로 카테고리별 청킹 → Embedding 수행.
+Ingestion with SSE Progress: FastAPI가 S3에서 PDF → 이미지 변환 (PyMuPDF) → Gemini 2.5 Flash-Lite로 카테고리별 청킹 → Embedding 수행.
+
+**SSE 진행률 단계**:
+- 0%: 시작
+- 10%: PDF 이미지 변환 중
+- 20%: 이미지 변환 완료
+- 30%: Gemini AI 청킹 시작
+- 30-70%: 배치별 청킹 진행 (8페이지씩)
+- 75%: 임베딩 및 DB 저장 시작
+- 100%: 완료
 
 Chunking Rules: Gemini 2.5 Flash-Lite가 자동으로 카테고리 분류 (성적, 세특, 창체, 행특, 기타 5개) 및 개인정보 삭제.
 
@@ -30,7 +39,7 @@ Chunking Rules: Gemini 2.5 Flash-Lite가 자동으로 카테고리 분류 (성�
 - 불분명한 텍스트는 [일부 텍스트 누락]으로 표시
 - 표의 숫자, 날짜, 점수 등 모든 데이터를 정확하게 복사
 
-Vector Store: 각 청크를 record_chunks 테이블에 저장하되, **record_id**를 메타데이터로 반드시 포함.
+Vector Store: 각 청크를 record_chunks 테이블에 저장하되, **record_id**를 기반으로 카테고리별 인덱싱.
 
 Status Update: student_records 테이블의 상태를 READY로 변경.
 

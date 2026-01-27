@@ -1,5 +1,5 @@
 """생기부 관련 API 엔드포인트 - 벡터화 & 질문 생성 (분리된 워크플로우)"""
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -20,22 +20,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def send_progress(progress: int, queue: asyncio.Queue):
+    """진행률을 큐에 전송하는 헬퍼 함수"""
+    await queue.put(progress)
+
+
 @router.post("/{record_id}/vectorize")
 async def vectorize_record(
     record_id: int,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
     생기부 벡터화 엔드포인트 (Upload 버튼 클릭 시 호출)
 
+    SSE 스트리밍으로 실시간 진행률 전송
+
     워크플로우:
-    1. S3에서 PDF 로드
-    2. 텍스트 추출
-    3. 카테고리별 청킹 (Chunking)
-    4. Gemini Embedding으로 벡터화
-    5. PostgreSQL의 record_chunks 테이블에 저장
-    6. student_records 테이블의 상태를 READY로 변경
+    1. S3에서 PDF → 이미지 변환
+    2. Gemini 2.5 Flash-Lite로 카테고리별 청킹
+    3. Embedding (text-multilingual-embedding-002)
+    4. PostgreSQL의 record_chunks 테이블에 저장
+    5. student_records 테이블의 상태를 READY로 변경
     """
     try:
         # 1. 생기부 조회
@@ -46,26 +51,19 @@ async def vectorize_record(
         if not record:
             raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
 
-        # 상태 검증
         if record.status == "READY":
             raise HTTPException(status_code=409, detail="이미 벡터화가 완료되었습니다.")
 
-        record.status = "PENDING"
-        db.commit()
-
-        # 백그라운드 태스크로 벡터화 실행
-        background_tasks.add_task(
-            _process_vectorization,
-            record.id,
-            record.s3_key,
-            db
+        # 2. SSE 응답 반환
+        return StreamingResponse(
+            vectorization_stream(record, db),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
         )
-
-        return {
-            "message": "벡터화가 시작되었습니다.",
-            "recordId": record_id,
-            "status": "PENDING"
-        }
 
     except HTTPException:
         raise
@@ -74,28 +72,114 @@ async def vectorize_record(
         raise HTTPException(status_code=500, detail="벡터화 시작 중 오류가 발생했습니다.")
 
 
-async def _process_vectorization(
+async def vectorization_stream(record: StudentRecord, db: Session):
+    """
+    벡터화 SSE 스트림 생성기
+
+    Args:
+        record: StudentRecord 객체
+        db: 데이터베이스 세션
+    """
+    try:
+        # 초기 상태 변경
+        record.status = "PENDING"
+        db.commit()
+
+        # 시작 이벤트 전송
+        yield create_sse_event(0)
+
+        # 진행률 큐 생성
+        progress_queue = asyncio.Queue()
+
+        # 벡터화 작업을 백그라운드 태스크로 실행
+        vectorization_task = asyncio.create_task(
+            _process_vectorization_with_progress(
+                record_id=record.id,
+                s3_key=record.s3_key,
+                db=db,
+                progress_queue=progress_queue
+            )
+        )
+
+        # 큐에서 진행률을 실시간으로 수신하여 전송
+        while not vectorization_task.done() or not progress_queue.empty():
+            try:
+                progress = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
+                yield create_sse_event(progress)
+            except asyncio.TimeoutError:
+                continue
+
+        # 작업 결과 확인
+        success, message, total_chunks = await vectorization_task
+
+        if not success:
+            error_event = SSEProgressEvent(
+                type="error",
+                progress=0
+            )
+            yield f"data: {error_event.model_dump_json()}\n\n"
+            return
+
+        # 완료 이벤트 전송
+        complete_event = SSEProgressEvent(
+            type="complete",
+            progress=100
+        )
+        yield f"data: {complete_event.model_dump_json()}\n\n"
+
+    except Exception as e:
+        logger.error(f"Error in vectorization stream: {e}")
+        error_event = SSEProgressEvent(
+            type="error",
+            progress=0
+        )
+        yield f"data: {error_event.model_dump_json()}\n\n"
+
+
+def create_sse_event(progress: int) -> str:
+    """
+    SSE 이벤트 생성 헬퍼 함수
+    """
+    event = SSEProgressEvent(
+        type="processing",
+        progress=progress
+    )
+    return f"data: {event.model_dump_json()}\n\n"
+
+
+async def _process_vectorization_with_progress(
     record_id: int,
     s3_key: str,
-    db: Session
+    db: Session,
+    progress_queue: asyncio.Queue
 ):
     """
-    백그라운드에서 벡터화 처리
+    진행률 콜백과 함께 벡터화 처리
+
+    Args:
+        progress_queue: 진행률을 전송할 큐
+
+    Returns:
+        (성공 여부, 메시지, 전체 청크 수)
     """
     try:
         logger.info(f"Processing vectorization for record {record_id}")
 
         # 1. PDF 이미지 변환 (S3에서 직접)
+        await send_progress(10, progress_queue)
         pdf_images = pdf_service.convert_pdf_to_images_from_s3(s3_key)
 
         if not pdf_images:
             raise Exception("PDF 이미지 변환 실패")
 
-        # 2. 벡터화 (Gemini 청킹 + 임베딩 + DB 저장)
-        success, message = await vector_service.vectorize_pdf(
+        await send_progress(20, progress_queue)
+
+        # 2. 벡터화 (Gemini 청킹 + 임베딩 + DB 저장) - 진행률 콜백 전달
+        success, message, total_chunks = await vector_service.vectorize_pdf(
             pdf_images=pdf_images,
             record_id=record_id,
-            db=db
+            db=db,
+            progress_callback=lambda p: send_progress(p, progress_queue)
         )
 
         if not success:
@@ -112,6 +196,8 @@ async def _process_vectorization(
 
         logger.info(f"Successfully vectorized record {record_id}: {message}")
 
+        return True, message, total_chunks
+
     except Exception as e:
         logger.error(f"Error processing vectorization: {e}")
 
@@ -124,6 +210,8 @@ async def _process_vectorization(
             db.commit()
         except:
             pass
+
+        return False, str(e), 0
 
 
 # ==================== Phase 2: 벌크 질문 생성 (Generate 버튼 트리거 + SSE) ====================
@@ -182,10 +270,8 @@ async def generate_questions(
                 async for state_update in question_generation_graph.astream(initial_state):
                     # 진행률 이벤트 전송
                     event = SSEProgressEvent(
-                        type="progress",
+                        type="processing",
                         progress=state_update.get('progress', 0),
-                        message=state_update.get('status_message', ''),
-                        category=state_update.get('current_category'),
                         questions=None
                     )
 
@@ -199,7 +285,6 @@ async def generate_questions(
                     error_event = SSEProgressEvent(
                         type="error",
                         progress=0,
-                        message=f"오류 발생: {final_state['error']}",
                         questions=None
                     )
                     yield f"data: {error_event.model_dump_json()}\n\n"
@@ -228,7 +313,6 @@ async def generate_questions(
                 complete_event = SSEProgressEvent(
                     type="complete",
                     progress=100,
-                    message=f"질문 생성 완료! 총 {len(questions_to_save)}개 질문이 생성되었습니다.",
                     questions=[
                         QuestionData(**q) for q in questions_to_save
                     ]
@@ -240,7 +324,6 @@ async def generate_questions(
                 error_event = SSEProgressEvent(
                     type="error",
                     progress=0,
-                    message=f"스트리밍 오류: {str(e)}",
                     questions=None
                 )
                 yield f"data: {error_event.model_dump_json()}\n\n"

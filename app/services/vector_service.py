@@ -25,27 +25,32 @@ class VectorService:
         self,
         pdf_images,
         record_id: int,
-        db: Session
-    ) -> Tuple[bool, str]:
+        db: Session,
+        progress_callback = None
+    ) -> Tuple[bool, str, int]:
         """
         PDF 이미지를 Gemini로 청킹하고 벡터화하여 DB 저장
-        
+
         Args:
             pdf_images: PIL 이미지 리스트
             record_id: 생기부 ID
             db: 데이터베이스 세션
-            
+            progress_callback: 진행률 콜백 함수 (progress: int, message: str) -> None
+
         Returns:
-            (성공 여부, 메시지)
+            (성공 여부, 메시지, 전체 청크 수)
         """
         try:
             logger.info(f"Starting Gemini-based vectorization for record {record_id}")
-            
+
             # 1. 이미지를 8장씩 배치로 분할
             batch_size = 8
             batches = [pdf_images[i:i + batch_size] for i in range(0, len(pdf_images), batch_size)]
             logger.info(f"Split {len(pdf_images)} pages into {len(batches)} batches")
-            
+
+            if progress_callback:
+                await progress_callback(30)
+
             # 2. 각 배치를 Gemini로 파싱
             all_chunks = []
             for i, batch in enumerate(batches):
@@ -53,22 +58,31 @@ class VectorService:
                     chunks = await self._parse_batch_with_gemini(batch, i, len(batches))
                     all_chunks.extend(chunks)
                     logger.info(f"Batch {i+1}/{len(batches)} parsed: {len(chunks)} chunks")
+
+                    # 진행률 업데이트 (30-70%)
+                    if progress_callback:
+                        batch_progress = 30 + int(((i + 1) / len(batches)) * 40)
+                        await progress_callback(batch_progress)
+
                 except Exception as e:
                     logger.error(f"Error parsing batch {i+1}: {e}")
                     continue
-            
+
             if not all_chunks:
-                return False, "청크를 생성할 수 없습니다."
-            
+                return False, "청크를 생성할 수 없습니다.", 0
+
             logger.info(f"Total chunks extracted: {len(all_chunks)}")
-            
+
             # 3. 각 청크를 벡터화하고 저장
+            if progress_callback:
+                await progress_callback(75)
+
             saved_count = 0
             for chunk_data in all_chunks:
                 try:
                     # 텍스트 임베딩
                     embedding = await self._embed_text(chunk_data['text'])
-                    
+
                     # DB 저장
                     chunk = RecordChunk(
                         record_id=record_id,
@@ -79,20 +93,20 @@ class VectorService:
                     )
                     db.add(chunk)
                     saved_count += 1
-                    
+
                 except Exception as e:
                     logger.error(f"Error processing chunk {chunk_data['index']}: {e}")
                     continue
-            
+
             db.commit()
             logger.info(f"Successfully saved {saved_count} chunks for record {record_id}")
-            
-            return True, f"{saved_count}개 청크가 벡터화되었습니다."
-            
+
+            return True, f"{saved_count}개 청크가 벡터화되었습니다.", saved_count
+
         except Exception as e:
             logger.error(f"Error vectorizing PDF: {e}")
             db.rollback()
-            return False, f"벡터화 중 오류 발생: {str(e)}"
+            return False, f"벡터화 중 오류 발생: {str(e)}", 0
     
     async def _parse_batch_with_gemini(
         self,
