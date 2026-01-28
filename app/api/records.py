@@ -264,17 +264,6 @@ async def record_creation_stream(record: StudentRecord, db: Session):
         yield f"data: {error_event.model_dump_json()}\n\n"
 
 
-def create_sse_event(progress: int) -> str:
-    """
-    SSE 이벤트 생성 헬퍼 함수
-    """
-    event = SSEProgressEvent(
-        type="processing",
-        progress=progress
-    )
-    return f"data: {event.model_dump_json()}\n\n"
-
-
 async def _process_vectorization_with_progress(
     record_id: int,
     s3_key: str,
@@ -473,91 +462,3 @@ async def generate_questions(
         logger.error(f"Error generating questions: {e}")
         raise HTTPException(status_code=500, detail="질문 생성 중 오류가 발생했습니다.")
 
-
-# ==================== 질문 조회 ====================
-
-@router.get("/{record_id}/questions")
-async def get_questions(
-    record_id: int,
-    category: Optional[str] = None,
-    difficulty: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """
-    생성된 질문 목록 조회
-    """
-    try:
-        # 생기부 조회
-        record = db.query(StudentRecord).filter(
-            StudentRecord.id == record_id
-        ).first()
-
-        if not record:
-            raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
-
-        # 질문 조회
-        query = db.query(Question).filter(Question.record_id == record_id)
-
-        if category:
-            query = query.filter(Question.category == category)
-        if difficulty:
-            query = query.filter(Question.difficulty == difficulty)
-
-        questions = query.all()
-
-        return {
-            "recordId": record_id,
-            "total": len(questions),
-            "questions": [
-                {
-                    "id": q.id,
-                    "category": q.category,
-                    "content": q.content,
-                    "difficulty": q.difficulty,
-                    "purpose": q.purpose,
-                    "answerPoints": q.answer_points,
-                    "modelAnswer": q.model_answer,
-                    "evaluationCriteria": q.evaluation_criteria,
-                    "isBookmarked": q.is_bookmarked,
-                    "createdAt": q.created_at.isoformat() if q.created_at else None
-                }
-                for q in questions
-            ]
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting questions: {e}")
-        raise HTTPException(status_code=500, detail="질문 조회 중 오류가 발생했습니다.")
-
-
-# ==================== 생기부 상태 조회 ====================
-
-@router.get("/{record_id}/status")
-async def get_record_status(
-    record_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    생기부 처리 상태 조회
-    """
-    try:
-        record = db.query(StudentRecord).filter(
-            StudentRecord.id == record_id
-        ).first()
-
-        if not record:
-            raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
-
-        return {
-            "recordId": record_id,
-            "status": record.status,
-            "createdAt": record.created_at.isoformat() if record.created_at else None
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting status: {e}")
-        raise HTTPException(status_code=500, detail="상태 조회 중 오류가 발생했습니다.")

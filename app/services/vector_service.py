@@ -89,7 +89,7 @@ class VectorService:
                         chunk_text=chunk_data['text'],
                         chunk_index=chunk_data['index'],
                         category=chunk_data['category'],
-                        embedding=str(embedding)
+                        embedding=embedding  # pgvector Vector 타입에 리스트 직접 전달
                     )
                     db.add(chunk)
                     saved_count += 1

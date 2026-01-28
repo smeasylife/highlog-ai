@@ -1,6 +1,7 @@
 from sqlalchemy import Column, BigInteger, String, Text, Integer, Boolean, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from pgvector.sqlalchemy import Vector
 from database import Base
 
 
@@ -47,7 +48,7 @@ class RecordChunk(Base):
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False)
     category = Column(String(50), nullable=False, index=True)  # 성적, 세특, 창체, 행특, 기타
-    embedding = Column(Text)  # 벡터 데이터 (텍스트로 저장, pgvector 타입은 마이그레이션에서 처리)
+    embedding = Column(Vector(768))  # pgvector Vector 타입 (text-multilingual-embedding-002: 768차원)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     record = relationship("StudentRecord", back_populates="record_chunks")
