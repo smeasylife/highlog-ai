@@ -264,6 +264,17 @@ async def record_creation_stream(record: StudentRecord, db: Session):
         yield f"data: {error_event.model_dump_json()}\n\n"
 
 
+def create_sse_event(progress: int) -> str:
+    """
+    SSE 이벤트 생성 헬퍼 함수
+    """
+    event = SSEProgressEvent(
+        type="processing",
+        progress=progress
+    )
+    return f"data: {event.model_dump_json()}\n\n"
+
+
 async def _process_vectorization_with_progress(
     record_id: int,
     s3_key: str,
@@ -333,6 +344,94 @@ async def _process_vectorization_with_progress(
 
 # ==================== Phase 2: 벌크 질문 생성 (Generate 버튼 트리거 + SSE) ====================
 
+async def question_generation_stream(
+    record_id: int,
+    request: GenerateQuestionsRequest,
+    db: Session
+):
+    """
+    질문 생성 SSE 스트림
+    
+    Args:
+        record_id: 생기부 ID
+        request: 질문 생성 요청
+        db: 데이터베이스 세션
+    """
+    try:
+        # 초기 상태 생성
+        initial_state = QuestionGenerationState(
+            record_id=record_id,
+            target_school=request.target_school or "알 수 없음",
+            target_major=request.target_major or "알 수 없음",
+            interview_type=request.interview_type or "종합전형",
+            current_category=None,
+            processed_categories=[],
+            all_questions=[],
+            progress=0,
+            status_message="",
+            error=""
+        )
+
+        # LangGraph 실행 (스트리밍)
+        async for state_update in question_generation_graph.astream(initial_state):
+            # 진행률 이벤트 전송
+            event = SSEProgressEvent(
+                type="processing",
+                progress=state_update.get('progress', 0),
+                questions=None
+            )
+            yield f"data: {event.model_dump_json()}\n\n"
+
+        # 최종 상태 수신 (실제로는 checkpoint에서 로드 필요)
+        # 현재는 initial_state를 참조하지만, 실제로는 astream의 마지막 상태를 사용해야 함
+        final_state = state_update
+
+        # 에러 체크
+        if final_state.get('error'):
+            error_event = SSEProgressEvent(
+                type="error",
+                progress=0,
+                questions=None
+            )
+            yield f"data: {error_event.model_dump_json()}\n\n"
+            return
+
+        # 질문 DB 저장
+        questions_to_save = final_state.get('all_questions', [])
+
+        if questions_to_save:
+            for q in questions_to_save:
+                question = Question(
+                    record_id=record_id,
+                    category=q.get('category', '기본'),
+                    content=q['content'],
+                    difficulty=q.get('difficulty', '기본'),
+                    purpose=q.get('purpose'),
+                    answer_points=q.get('answer_points'),
+                    model_answer=q.get('model_answer'),
+                    evaluation_criteria=q.get('evaluation_criteria')
+                )
+                db.add(question)
+
+            db.commit()
+
+        # 완료 이벤트 전송 
+        complete_event = SSEProgressEvent(
+            type="complete",
+            progress=100
+        )
+        yield f"data: {complete_event.model_dump_json()}\n\n"
+
+    except Exception as e:
+        logger.error(f"Error in question generation stream: {e}")
+        error_event = SSEProgressEvent(
+            type="error",
+            progress=0,
+            questions=None
+        )
+        yield f"data: {error_event.model_dump_json()}\n\n"
+
+
 @router.post("/{record_id}/generate-questions")
 async def generate_questions(
     record_id: int,
@@ -343,13 +442,6 @@ async def generate_questions(
     벌크 질문 생성 엔드포인트 (Generate 버튼 클릭 시 호출)
 
     SSE 스트리밍으로 실시간 진행률 전송
-
-    워크플로우:
-    1. SSE Handshake - Spring Boot와 FastAPI 간 SSE 스트림 연결
-    2. Metadata Search - record_id를 기반으로 벡터 DB에서 카테고리별 데이터 추출
-    3. LangGraph Generator - Gemini 2.5 Flash가 영역별 질문(5개 이하) 및 모범 답안, 질문 목적 생성
-    4. Progress Streaming - 각 노드 완료 시 진행률(%)과 상태 메시지 yield
-    5. Finalization - 생성된 질문 세트를 questions 테이블에 벌크 저장 후 스트림 종료
     """
     try:
         # 1. 생기부 조회
@@ -366,88 +458,18 @@ async def generate_questions(
                 detail=f"벡터화가 완료되지 않았습니다. 현재 상태: {record.status}"
             )
 
-        # 2. SSE 스트리밍 함수 정의
-        async def event_stream():
-            try:
-                # 초기 상태 생성
-                initial_state = QuestionGenerationState(
-                    record_id=record_id,
-                    target_school=request.target_school or record.target_school or "알 수 없음",
-                    target_major=request.target_major or record.target_major or "알 수 없음",
-                    interview_type=request.interview_type or record.interview_type or "종합전형",
-                    current_category=None,
-                    processed_categories=[],
-                    all_questions=[],
-                    progress=0,
-                    status_message="",
-                    error=""
-                )
-
-                # LangGraph 실행 (스트리밍)
-                async for state_update in question_generation_graph.astream(initial_state):
-                    # 진행률 이벤트 전송
-                    event = SSEProgressEvent(
-                        type="processing",
-                        progress=state_update.get('progress', 0),
-                        questions=None
-                    )
-
-                    yield f"data: {event.model_dump_json()}\n\n"
-
-                # 최종 상태 수신
-                final_state = initial_state  # astream은 상태를 업데이트하지 않음, 실제로는 checkpoint에서 로드 필요
-
-                # 에러 체크
-                if final_state.get('error'):
-                    error_event = SSEProgressEvent(
-                        type="error",
-                        progress=0,
-                        questions=None
-                    )
-                    yield f"data: {error_event.model_dump_json()}\n\n"
-                    return
-
-                # 질문 DB 저장
-                questions_to_save = final_state.get('all_questions', [])
-
-                if questions_to_save:
-                    for q in questions_to_save:
-                        question = Question(
-                            record_id=record_id,
-                            category=q.get('category', '기본'),
-                            content=q['content'],
-                            difficulty=q.get('difficulty', '기본'),
-                            purpose=q.get('purpose'),
-                            answer_points=q.get('answer_points'),
-                            model_answer=q.get('model_answer'),
-                            evaluation_criteria=q.get('evaluation_criteria')
-                        )
-                        db.add(question)
-
-                    db.commit()
-
-                # 완료 이벤트 전송
-                complete_event = SSEProgressEvent(
-                    type="complete",
-                    progress=100,
-                    questions=[
-                        QuestionData(**q) for q in questions_to_save
-                    ]
-                )
-                yield f"data: {complete_event.model_dump_json()}\n\n"
-
-            except Exception as e:
-                logger.error(f"Error in event stream: {e}")
-                error_event = SSEProgressEvent(
-                    type="error",
-                    progress=0,
-                    questions=None
-                )
-                yield f"data: {error_event.model_dump_json()}\n\n"
+        # 2. request에 record 정보 병합
+        # DB에 저장된 값이 우선되지만, request로 오버라이드 가능
+        if not request.target_school:
+            request.target_school = record.target_school
+        if not request.target_major:
+            request.target_major = record.target_major
+        if not request.interview_type:
+            request.interview_type = record.interview_type
 
         # 3. SSE 응답 반환
         return StreamingResponse(
-            event_stream(),
+            question_generation_stream(record_id, request, db),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
