@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import json
 import asyncio
+import io
 
-from database import get_db
+from app.database import get_db
 from app.models import StudentRecord, Question
 from app.services.pdf_service import pdf_service
 from app.services.vector_service import vector_service
@@ -156,7 +157,8 @@ async def vectorization_stream(record: StudentRecord, db: Session):
         if not success:
             error_event = SSEProgressEvent(
                 type="error",
-                progress=0
+                progress=0,
+                message=str(e) if 'e' in locals() else "에러가 발생했습니다"
             )
             yield f"data: {error_event.model_dump_json()}\n\n"
             return
@@ -164,16 +166,18 @@ async def vectorization_stream(record: StudentRecord, db: Session):
         # 완료 이벤트 전송
         complete_event = SSEProgressEvent(
             type="complete",
-            progress=100
+            progress=100,
+            message="완료되었습니다."
         )
         yield f"data: {complete_event.model_dump_json()}\n\n"
 
     except Exception as e:
         logger.error(f"Error in vectorization stream: {e}")
         error_event = SSEProgressEvent(
-            type="error",
-            progress=0
-        )
+                type="error",
+                progress=0,
+                message=str(e) if 'e' in locals() else "에러가 발생했습니다"
+            )
         yield f"data: {error_event.model_dump_json()}\n\n"
 
 
@@ -182,9 +186,10 @@ def create_sse_event(progress: int) -> str:
     SSE 이벤트 생성 헬퍼 함수
     """
     event = SSEProgressEvent(
-        type="processing",
-        progress=progress
-    )
+            type="processing",
+            progress=progress,
+            message=f"진행률 {progress}%"
+        )
     return f"data: {event.model_dump_json()}\n\n"
 
 
@@ -231,7 +236,8 @@ async def record_creation_stream(record: StudentRecord, db: Session):
 
             error_event = SSEProgressEvent(
                 type="error",
-                progress=0
+                progress=0,
+                message=str(e) if 'e' in locals() else "에러가 발생했습니다"
             )
             yield f"data: {error_event.model_dump_json()}\n\n"
             return
@@ -243,7 +249,8 @@ async def record_creation_stream(record: StudentRecord, db: Session):
         # 완료 이벤트 전송
         complete_event = SSEProgressEvent(
             type="complete",
-            progress=100
+            progress=100,
+            message="완료되었습니다."
         )
         yield f"data: {complete_event.model_dump_json()}\n\n"
 
@@ -258,9 +265,10 @@ async def record_creation_stream(record: StudentRecord, db: Session):
             pass
 
         error_event = SSEProgressEvent(
-            type="error",
-            progress=0
-        )
+                type="error",
+                progress=0,
+                message=str(e) if 'e' in locals() else "에러가 발생했습니다"
+            )
         yield f"data: {error_event.model_dump_json()}\n\n"
 
 
@@ -269,9 +277,10 @@ def create_sse_event(progress: int) -> str:
     SSE 이벤트 생성 헬퍼 함수
     """
     event = SSEProgressEvent(
-        type="processing",
-        progress=progress
-    )
+            type="processing",
+            progress=progress,
+            message=f"진행률 {progress}%"
+        )
     return f"data: {event.model_dump_json()}\n\n"
 
 
@@ -290,23 +299,40 @@ async def _process_vectorization_with_progress(
     Returns:
         (성공 여부, 메시지, 전체 청크 수)
     """
+    # 주의: 백그라운드 태스크에서는 새로운 DB 세션 생성 필요
+    from app.database import SessionLocal
+    
+    local_db = SessionLocal()
     try:
         logger.info(f"Processing vectorization for record {record_id}")
 
-        # 1. PDF 이미지 변환 (S3에서 직접)
+        # 1. S3에서 PDF 다운로드
         await send_progress(10, progress_queue)
-        pdf_images = pdf_service.convert_pdf_to_images_from_s3(s3_key)
 
-        if not pdf_images:
-            raise Exception("PDF 이미지 변환 실패")
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("📄 S3 PDF 다운로드 시작")
+        logger.info(f"   S3 Key: {s3_key}")
+
+        import io
+        from app.services.s3_service import s3_service
+        
+        file_stream = s3_service.get_file_stream(s3_key)
+        if not file_stream:
+            logger.error("❌ S3 PDF 다운로드 실패")
+            raise Exception("S3 PDF 다운로드 실패")
+
+        pdf_bytes = io.BytesIO(file_stream.read())
+        logger.info(f"✅ PDF 다운로드 완료: {len(pdf_bytes.getvalue()) / 1024:.2f} KB")
+        logger.info("=" * 60)
 
         await send_progress(20, progress_queue)
 
-        # 2. 벡터화 (Gemini 청킹 + 임베딩 + DB 저장) - 진행률 콜백 전달
+        # 2. 벡터화 (Gemini 청킹 + 임베딩 + DB 저장) - PDF 직접 전달
         success, message, total_chunks = await vector_service.vectorize_pdf(
-            pdf_images=pdf_images,
+            pdf_bytes=pdf_bytes,  # PDF 바이트를 직접 전달
             record_id=record_id,
-            db=db,
+            db=local_db,  # 로컬 DB 세션 사용
             progress_callback=lambda p: send_progress(p, progress_queue)
         )
 
@@ -314,32 +340,42 @@ async def _process_vectorization_with_progress(
             raise Exception(message)
 
         # 3. 상태 업데이트
-        record = db.query(StudentRecord).filter(
+        record = local_db.query(StudentRecord).filter(
             StudentRecord.id == record_id
         ).first()
 
         record.status = "READY"
 
-        db.commit()
+        local_db.commit()
 
-        logger.info(f"Successfully vectorized record {record_id}: {message}")
+        logger.info("")
+        logger.info("✅ S3 PDF 벡터화 완료")
+        logger.info("=" * 60)
 
         return True, message, total_chunks
 
     except Exception as e:
-        logger.error(f"Error processing vectorization: {e}")
+        logger.error("")
+        logger.error("=" * 60)
+        logger.error("❌ S3 PDF 벡터화 실패")
+        logger.error(f"   에러: {e}")
+        logger.error("=" * 60)
 
         # 실패 상태로 변경
         try:
-            record = db.query(StudentRecord).filter(
+            record = local_db.query(StudentRecord).filter(
                 StudentRecord.id == record_id
             ).first()
-            record.status = "FAILED"
-            db.commit()
-        except:
-            pass
+            if record:
+                record.status = "FAILED"
+                local_db.commit()
+        except Exception as db_error:
+            logger.error(f"Error updating record status: {db_error}")
 
         return False, str(e), 0
+        
+    finally:
+        local_db.close()
 
 
 # ==================== Phase 2: 벌크 질문 생성 (Generate 버튼 트리거 + SSE) ====================
@@ -378,7 +414,8 @@ async def question_generation_stream(
             event = SSEProgressEvent(
                 type="processing",
                 progress=state_update.get('progress', 0),
-                questions=None
+                message=state_update.get('message', f"진행률 {state_update.get('progress', 0)}%")
+
             )
             yield f"data: {event.model_dump_json()}\n\n"
 
@@ -391,7 +428,7 @@ async def question_generation_stream(
             error_event = SSEProgressEvent(
                 type="error",
                 progress=0,
-                questions=None
+                message=final_state.get('error', '에러가 발생했습니다')
             )
             yield f"data: {error_event.model_dump_json()}\n\n"
             return
@@ -418,7 +455,8 @@ async def question_generation_stream(
         # 완료 이벤트 전송 
         complete_event = SSEProgressEvent(
             type="complete",
-            progress=100
+            progress=100,
+            message="완료되었습니다."
         )
         yield f"data: {complete_event.model_dump_json()}\n\n"
 
@@ -427,7 +465,7 @@ async def question_generation_stream(
         error_event = SSEProgressEvent(
             type="error",
             progress=0,
-            questions=None
+            message=str(e)
         )
         yield f"data: {error_event.model_dump_json()}\n\n"
 

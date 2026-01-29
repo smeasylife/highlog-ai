@@ -1,13 +1,13 @@
 📄 claude.md (Enterprise Button-Separated Version)
 1. Project Overview
-Goal: Gemini 2.5 Flash-Lite 기반의 생기부 맞춤형 면접 플랫폼.
+Goal: Gemini 2.5 Flash 기반의 생기부 맞춤형 면접 플랫폼.
 
 Structure: '업로드/벡터화'와 '질문 생성' 프로세스를 분리하여 운영 효율성 극대화.
 
 2. Updated Tech Stack
 AI Engine: Python 3.11+ / FastAPI / LangGraph
 
-AI Model: Gemini 2.5 Flash-Lite (청킹, 질문 생성, 면접 등 전 과정).
+AI Model: Gemini 2.5 Flash (청킹, 질문 생성, 면접 등 전 과정).
 
 Embedding: Google text-multilingual-embedding-002.
 
@@ -19,18 +19,18 @@ Vector DB: PostgreSQL 15 + pgvector (Metadata Filter: record_id, category 필수
 
 S3 Upload: Client → S3 직접 업로드 (Presigned URL).
 
-Ingestion with SSE Progress: FastAPI가 S3에서 PDF → 이미지 변환 (PyMuPDF) → Gemini 2.5 Flash-Lite로 카테고리별 청킹 → Embedding 수행.
+Ingestion with SSE Progress: FastAPI가 S3에서 PDF → 이미지 변환 (PyMuPDF) → Gemini 2.5 Flash로 카테고리별 청킹 → Embedding 수행.
 
 **SSE 진행률 단계**:
 - 0%: 시작
 - 10%: PDF 이미지 변환 중
 - 20%: 이미지 변환 완료
 - 30%: Gemini AI 청킹 시작
-- 30-70%: 배치별 청킹 진행 (8페이지씩)
+- 30-70%: 배치별 청킹 진행 (3페이지씩)
 - 75%: 임베딩 및 DB 저장 시작
 - 100%: 완료
 
-Chunking Rules: Gemini 2.5 Flash-Lite가 자동으로 카테고리 분류 (성적, 세특, 창체, 행특, 기타 5개) 및 개인정보 삭제.
+Chunking Rules: Gemini 2.5 Flash가 자동으로 카테고리 분류 (성적, 세특, 창체, 행특, 기타 5개) 및 개인정보 삭제.
 
 **🚨 Hallucination 방지 (정확성 원칙)**:
 - 이미지에 있는 텍스트만 있는 그대로 추출 (절대 추측 금지)
@@ -50,7 +50,7 @@ Step 1: SSE Handshake - Spring Boot와 FastAPI 간 SSE 스트림 연결.
 
 Step 2: Metadata Search - 넘겨받은 record_id를 기반으로 벡터 DB에서 카테고리별(성적, 세특, 창체, 행특, 기타) 청크를 record_chunks 테이블에서 직접 조회.
 
-Step 3: LangGraph Generator - Gemini 2.5 Flash-Lite가 영역별 질문(5개 이하) 및 모범 답안, 질문 목적을 생성.
+Step 3: LangGraph Generator - Gemini 2.5 Flash가 영역별 질문(5개 이하) 및 모범 답안, 질문 목적을 생성.
 
 Step 4: Progress Streaming - 각 노드 완료 시 진행률(%)과 상태 메시지 yield.
 
@@ -59,7 +59,7 @@ Step 4: Progress Streaming - 각 노드 완료 시 진행률(%)과 상태 메시
 Step 5: Finalization - 생성된 질문 세트를 questions 테이블에 벌크 저장 후 스트림 종료.
 
 4. Key Development Rules
-Gemini Native Audio: 면접 시 별도 STT 없이 음성 파일을 직접 Gemini 2.5 Flash-Lite에 전달.
+Gemini Native Audio: 면접 시 별도 STT 없이 음성 파일을 직접 Gemini 2.5 Flash에 전달.
 
 비용: 10분 면접 기준 약 26원 (1초당 32토큰 계산).
 

@@ -45,7 +45,7 @@ class SSEProgressEvent(BaseModel):
     """SSE 진행률 이벤트"""
     type: str = Field(..., description="이벤트 타입 (progress, complete, error)")
     progress: int = Field(..., description="진행률 (0-100)")
-    questions: Optional[List[QuestionData]] = Field(None, description="생성된 질문 목록")
+    message: Optional[str] = Field(None, description="진행 상태 메시지")
 
 
 # ========== Internal Schemas ==========

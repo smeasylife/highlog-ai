@@ -4,11 +4,16 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
 from config import settings
 
-# PostgreSQL 엔진 생성
+# PostgreSQL 엔진 생성 (psycopg 3 사용)
+# psycopg 3를 사용하기 위해 URL에 +psycopg 접두사 추가
+db_url = settings.database_url
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
 engine = create_engine(
-    settings.database_url,
+    db_url,
     poolclass=NullPool,  # LangGraph를 위한 연결 풀 비활성화
-    echo=settings.debug
+    echo=False  # SQL 로그 비활성화 (불필요한 쿼리 로그 제거)
 )
 
 # 세션 팩토리
@@ -33,5 +38,9 @@ def get_db() -> Session:
 def get_langgraph_connection_string() -> str:
     """
     LangGraph PostgreSQL Checkpointer를 위한 연결 문자열 반환
+    psycopg 3를 사용하기 위해 URL 변환
     """
-    return settings.database_url
+    db_url = settings.database_url
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return db_url

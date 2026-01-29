@@ -2,7 +2,7 @@ from sqlalchemy import Column, BigInteger, String, Text, Integer, Boolean, DateT
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
-from database import Base
+from app.database import Base
 
 
 class User(Base):

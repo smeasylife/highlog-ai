@@ -1,10 +1,10 @@
 from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from operator import add
 from pydantic import BaseModel, Field
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.postgres import PostgresSaver
+from google import genai
+from google.genai import types
 from config import settings
 from app.database import get_langgraph_connection_string
 import logging
@@ -65,17 +65,17 @@ class QuestionGenerationGraph:
         try:
             connection_string = get_langgraph_connection_string()
             self.checkpointer = PostgresSaver.from_conn_string(connection_string)
+            # Checkpointer 테이블 생성 (최초 1회만 필요)
+            self.checkpointer.setup()
             logger.info("LangGraph PostgreSQL Checkpointer initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize checkpointer: {e}")
             self.checkpointer = None
-        
-        # Gemini 2.5 Flash-Lite 초기화 (구조화된 출력)
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash-lite",
-            temperature=0.7,
-            google_api_key=settings.google_api_key
-        ).with_structured_output(QuestionListResponse)
+
+        # Google GenAI 클라이언트 초기화
+        self.client = genai.Client(api_key=settings.google_api_key)
+        self.model = "gemini-2.5-flash-lite"
+        self.types = types
 
         # 그래프 빌드
         self.graph = self._build_graph()
@@ -249,15 +249,15 @@ class QuestionGenerationGraph:
         interview_type: str
     ) -> List[Dict[str, Any]]:
         """
-        카테고리별 질문 생성 (Gemini 2.5 Flash)
+        카테고리별 질문 생성 (google.genai 사용)
         """
         try:
             # 청크 텍스트 결합 (모든 청크 사용)
             logger.info(f"Generating questions for {category}: using all {len(chunks)} chunks")
             context = "\n\n".join([chunk['text'] for chunk in chunks])
 
-            # 시스템 프롬프트
-            system_prompt = f"""당신은 대학 입시 면접 준비를 위한 AI 면접관입니다.
+            # 프롬프트 (시스템 + 사용자 결합)
+            prompt = f"""당신은 대학 입시 면접 준비를 위한 AI 면접관입니다.
 
 학생의 생활기록부 {category} 관련 내용을 분석하여 예상 면접 질문을 생성해주세요.
 
@@ -277,26 +277,55 @@ class QuestionGenerationGraph:
 **난이도 구분**:
 - 기본: 기본적인 질문
 - 심화: 깊이 있는 질문
-- 압박: 압박감 있는 질문"""
+- 압박: 압박감 있는 질문
 
-            # 사용자 프롬프트
-            user_prompt = f"""다음은 학생 생활기록부의 {category} 관련 내용입니다:
+다음은 학생 생활기록부의 {category} 관련 내용입니다:
 
 {context}
 
-이 내용을 바탕으로 위의 지침에 따라 예상 면접 질문을 생성해주세요."""
+이 내용을 바탕으로 위의 지침에 따라 예상 면접 질문을 JSON 형식으로 생성해주세요."""
 
-            # LLM 호출 (자동으로 Pydantic 모델로 파싱됨)
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ]
-            
-            # with_structured_output을 사용하면 이미 Pydantic 모델로 반환됨
-            result: QuestionListResponse = await self.llm.ainvoke(messages)
-            
-            # Dict 형식으로 변환
-            return [q.model_dump() for q in result.questions]
+            # JSON 스키마 정의
+            schema = self.types.Schema(
+                type=self.types.Type.OBJECT,
+                properties={
+                    "questions": self.types.Schema(
+                        type=self.types.Type.ARRAY,
+                        items=self.types.Schema(
+                            type=self.types.Type.OBJECT,
+                            properties={
+                                "category": self.types.Schema(type=self.types.Type.STRING, description="질문 카테고리"),
+                                "content": self.types.Schema(type=self.types.Type.STRING, description="질문 내용"),
+                                "difficulty": self.types.Schema(type=self.types.Type.STRING, description="난이도 (기본, 심화, 압박)"),
+                                "purpose": self.types.Schema(type=self.types.Type.STRING, description="질문의 목적"),
+                                "answer_points": self.types.Schema(type=self.types.Type.STRING, description="답변 포인트"),
+                                "model_answer": self.types.Schema(type=self.types.Type.STRING, description="모범 답안"),
+                                "evaluation_criteria": self.types.Schema(type=self.types.Type.STRING, description="평가 기준"),
+                            },
+                            required=["category", "content", "difficulty", "purpose", "answer_points", "model_answer", "evaluation_criteria"]
+                        )
+                    )
+                },
+                required=["questions"]
+            )
+
+            # Google GenAI로 구조화된 출력 생성
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=self.types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                    temperature=0.7
+                )
+            )
+
+            # JSON 파싱
+            result = json.loads(response.text)
+            questions = result.get("questions", [])
+
+            logger.info(f"Generated {len(questions)} questions for {category}")
+            return questions
 
         except Exception as e:
             logger.error(f"Error generating questions for {category}: {e}")
