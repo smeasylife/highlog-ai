@@ -48,7 +48,7 @@ class RecordChunk(Base):
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False)
     category = Column(String(50), nullable=False, index=True)  # 성적, 세특, 창체, 행특, 기타
-    embedding = Column(Vector(768))  # pgvector Vector 타입 (text-multilingual-embedding-002: 768차원)
+    embedding = Column(Vector(3072))  # pgvector Vector 타입 (gemini-embedding-001: 3072차원)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     record = relationship("StudentRecord", back_populates="record_chunks")

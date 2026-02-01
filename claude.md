@@ -9,7 +9,7 @@ AI Engine: Python 3.11+ / FastAPI / LangGraph
 
 AI Model: Gemini 2.5 Flash (청킹, 질문 생성, 면접 등 전 과정).
 
-Embedding: Google text-multilingual-embedding-002.
+Embedding: Google gemini-embedding-001 (3072차원).
 
 Vector DB: PostgreSQL 15 + pgvector (Metadata Filter: record_id, category 필수).
 
