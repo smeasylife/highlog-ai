@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from app.api import records, test_records
+from app.api import records, test_records, interview
 import logging
 
 # 로그 레벨 설정 (DEBUG로 모든 로그 출력)
@@ -37,6 +37,7 @@ app.add_middleware(
 # 라우터 등록
 app.include_router(records.router, prefix="/api/records", tags=["records"])
 app.include_router(test_records.router, prefix="/api/test", tags=["test"])
+app.include_router(interview.router, prefix="/api/interview", tags=["interview"])
 
 
 @app.get("/health")

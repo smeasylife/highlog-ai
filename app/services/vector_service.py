@@ -426,6 +426,70 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
         except Exception as e:
             logger.error(f"Embedding failed: {e}")
             raise
+    
+    async def search_chunks_by_topic(
+        self,
+        record_id: int,
+        topic: str
+    ) -> List[Dict]:
+        """
+        주제에 따라 관련 청크 검색
+        
+        Args:
+            record_id: 생기부 ID
+            topic: 하위 주제 (출결, 성적, 동아리, 리더십, 인성/태도, 진로/자율, 독서, 봉사)
+        
+        Returns:
+            관련 청크 리스트
+        """
+        try:
+            from app.database import get_db
+            from app.models import RecordChunk
+            
+            # DB 세션 생성
+            db_generator = get_db()
+            db = next(db_generator)
+            
+            try:
+                # 주제별 카테고리 매핑
+                topic_category_map = {
+                    "출결": "기타",
+                    "성적": "성적",
+                    "동아리": "창체",
+                    "리더십": "행특",
+                    "인성/태도": "행특",
+                    "진로/자율": "세특",
+                    "독서": "세특",
+                    "봉사": "창체"
+                }
+                
+                category = topic_category_map.get(topic, "기타")
+                
+                # 해당 카테고리의 청크 조회
+                chunks = db.query(RecordChunk).filter(
+                    RecordChunk.record_id == record_id,
+                    RecordChunk.category == category
+                ).order_by(RecordChunk.chunk_index).all()
+                
+                # 딕셔너리 형태로 변환
+                result = [
+                    {
+                        "text": chunk.chunk_text,
+                        "category": chunk.category,
+                        "chunk_index": chunk.chunk_index
+                    }
+                    for chunk in chunks
+                ]
+                
+                logger.info(f"Retrieved {len(result)} chunks for topic {topic} (category: {category})")
+                return result
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error searching chunks for topic {topic}: {e}")
+            return []
 
 
 vector_service = VectorService()
