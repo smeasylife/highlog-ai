@@ -368,3 +368,4 @@ async def get_record_questions(record_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error getting questions: {e}")
         raise HTTPException(status_code=500, detail="질문 조회 중 오류가 발생했습니다.")
+

@@ -299,7 +299,7 @@ async def _process_vectorization_with_progress(
     Returns:
         (성공 여부, 메시지, 전체 청크 수)
     """
-    # 주의: 백그라운드 태스크에서는 새로운 DB 세션 생성 필요
+    # 백그라운드 태스크에서는 새로운 DB 세션 생성 필요
     from app.database import SessionLocal
     
     local_db = SessionLocal()
@@ -309,22 +309,15 @@ async def _process_vectorization_with_progress(
         # 1. S3에서 PDF 다운로드
         await send_progress(10, progress_queue)
 
-        logger.info("")
-        logger.info("=" * 60)
-        logger.info("📄 S3 PDF 다운로드 시작")
-        logger.info(f"   S3 Key: {s3_key}")
-
         import io
         from app.services.s3_service import s3_service
         
         file_stream = s3_service.get_file_stream(s3_key)
         if not file_stream:
-            logger.error("❌ S3 PDF 다운로드 실패")
-            raise Exception("S3 PDF 다운로드 실패")
+            logger.error("S3 PDF download failed")
+            raise Exception("S3 PDF download failed")
 
         pdf_bytes = io.BytesIO(file_stream.read())
-        logger.info(f"✅ PDF 다운로드 완료: {len(pdf_bytes.getvalue()) / 1024:.2f} KB")
-        logger.info("=" * 60)
 
         await send_progress(20, progress_queue)
 
@@ -348,18 +341,12 @@ async def _process_vectorization_with_progress(
 
         local_db.commit()
 
-        logger.info("")
-        logger.info("✅ S3 PDF 벡터화 완료")
-        logger.info("=" * 60)
+        logger.info(f"S3 PDF vectorization completed: record_id={record_id}, chunks={total_chunks}")
 
         return True, message, total_chunks
 
     except Exception as e:
-        logger.error("")
-        logger.error("=" * 60)
-        logger.error("❌ S3 PDF 벡터화 실패")
-        logger.error(f"   에러: {e}")
-        logger.error("=" * 60)
+        logger.error(f"S3 PDF vectorization failed for record {record_id}: {e}")
 
         # 실패 상태로 변경
         try:

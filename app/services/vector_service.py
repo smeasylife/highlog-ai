@@ -41,20 +41,17 @@ class VectorService:
             db: 데이터베이스 세션
             progress_callback: 진행률 콜백 함수 (progress: int, message: str) -> None
 
+
         Returns:
             (성공 여부, 메시지, 전체 청크 수)
         """
         try:
-            logger.info("=" * 60)
-            logger.info("🚀 PDF 벡터화 시작")
-            logger.info(f"📄 Record ID: {record_id}")
-            logger.info("=" * 60)
+            logger.info(f"Starting PDF vectorization for record {record_id}")
 
             # PDF 크기 확인
             pdf_bytes.seek(0)
             pdf_size = len(pdf_bytes.read())
             pdf_bytes.seek(0)
-            logger.info(f"📄 PDF 크기: {pdf_size / 1024:.2f} KB")
 
             # 1. PDF를 2페이지씩 배치로 분할
             # PDF 전체를 fitz로 열어 페이지 수 확인
@@ -64,14 +61,12 @@ class VectorService:
             doc.close()
             pdf_bytes.seek(0)  # 다시 처음으로
 
-            batch_size = 2  # 2페이지씩 배치
+
+
+            batch_size = 4  # 4페이지씩 배치
             total_batches = (total_pages + batch_size - 1) // batch_size
 
-            logger.info("")
-            logger.info("📦 Step 1: 배치 분할")
-            logger.info(f"   배치 크기: {batch_size}페이지")
-            logger.info(f"   총 배치 수: {total_batches}개")
-            logger.info(f"   총 페이지 수: {total_pages}페이지")
+            logger.info(f"PDF split into {total_batches} batches (batch_size={batch_size}, total_pages={total_pages})")
 
             if progress_callback:
                 await progress_callback(30)
@@ -80,8 +75,7 @@ class VectorService:
             all_chunks = []
             failed_batches = []
 
-            logger.info("")
-            logger.info("🤖 Step 2: Gemini AI 청킹 시작")
+            logger.info("Starting Gemini AI chunking")
 
             for i in range(total_batches):
                 try:
@@ -89,15 +83,13 @@ class VectorService:
                     end_page = min(start_page + batch_size, total_pages)
                     pages_in_batch = list(range(start_page, end_page))
 
-                    logger.info(f"   📋 배치 {i+1}/{total_batches} 처리 중... (페이지 {start_page+1}-{end_page})")
-
                     chunks = await self._parse_pdf_batch_with_gemini(pdf_bytes, pages_in_batch, i, total_batches)
 
                     if chunks:
                         all_chunks.extend(chunks)
-                        logger.info(f"   ✅ 배치 {i+1}: {len(chunks)}개 청크 생성 완료")
+                        logger.info(f"Batch {i+1}/{total_batches}: {len(chunks)} chunks created")
                     else:
-                        logger.warning(f"   ⚠️  배치 {i+1}: 청크가 반환되지 않음")
+                        logger.warning(f"Batch {i+1}: No chunks returned")
                         failed_batches.append(i+1)
 
                     # 진행률 업데이트 (30-70%)
@@ -106,7 +98,7 @@ class VectorService:
                         await progress_callback(batch_progress)
 
                 except Exception as e:
-                    logger.error(f"   ❌ 배치 {i+1} 파싱 실패: {e}")
+                    logger.error(f"Batch {i+1} parsing failed: {e}")
                     failed_batches.append(i+1)
 
                     # 계속 진행 (하나의 배치 실패가 전체를 망치지 않게)
@@ -117,39 +109,29 @@ class VectorService:
 
             # 실패한 배치가 있으면 전체 실패 처리
             if failed_batches:
-                logger.error("")
-                logger.error("❌ 배치 파싱 실패")
-                logger.error(f"   실패한 배치: {failed_batches}")
-                logger.error("=" * 60)
-                return False, f"배치 파싱 실패: {failed_batches}", 0
+                logger.error(f"Batch parsing failed: {failed_batches}")
+                return False, f"Batch parsing failed: {failed_batches}", 0
 
             if not all_chunks:
-                logger.error("❌ 청크를 생성할 수 없음")
-                return False, "청크를 생성할 수 없습니다.", 0
+                logger.error("No chunks generated")
+                return False, "Failed to generate chunks", 0
 
-            logger.info("")
-            logger.info(f"✅ 전체 청크 생성 완료: {len(all_chunks)}개")
-            logger.info(f"   카테고리별 분포:")
+            # 카테고리별 통계
             category_counts = {}
             for chunk in all_chunks:
                 cat = chunk['category']
                 category_counts[cat] = category_counts.get(cat, 0) + 1
-            for cat, count in sorted(category_counts.items()):
-                logger.info(f"   - {cat}: {count}개")
+            logger.info(f"Generated {len(all_chunks)} chunks total: {category_counts}")
 
             # 3. 각 청크를 벡터화하고 저장
             if progress_callback:
                 await progress_callback(75)
 
-            logger.info("")
-            logger.info("🔄 Step 3: 임베딩 및 DB 저장")
-            logger.info(f"   {len(all_chunks)}개 청크 처리 중...")
+            logger.info(f"Starting embedding and DB save for {len(all_chunks)} chunks")
 
             saved_count = 0
             for chunk_data in all_chunks:
                 try:
-                    logger.info(f"   [{saved_count+1}/{len(all_chunks)}] {chunk_data['category']} - {len(chunk_data['text'])}자 임베딩 중...")
-                    
                     # 텍스트 임베딩
                     embedding = await self._embed_text(chunk_data['text'])
 
@@ -170,33 +152,24 @@ class VectorService:
                         await progress_callback(embed_progress)
 
                 except Exception as e:
-                    logger.error(f"   ❌ 청크 {chunk_data['index'] + 1} 처리 실패: {e}")
+                    logger.error(f"Chunk {chunk_data['index'] + 1} processing failed: {e}")
                     continue
 
             db.commit()
 
-            logger.info("")
-            logger.info("=" * 60)
-            logger.info("✅ PDF 벡터화 완료")
-            logger.info(f"   Record ID: {record_id}")
-            logger.info(f"   저장된 청크 수: {saved_count}개")
-            logger.info("=" * 60)
+            logger.info(f"PDF vectorization completed: {saved_count} chunks saved for record {record_id}")
 
             # 저장된 청크가 없으면 실패 반환
             if saved_count == 0:
-                logger.error("❌ 벡터화된 청크가 없음")
-                return False, "벡터화된 청크가 없습니다.", 0
+                logger.error("No chunks were vectorized")
+                return False, "No chunks were vectorized", 0
 
-            return True, f"{saved_count}개 청크가 벡터화되었습니다.", saved_count
+            return True, f"{saved_count} chunks vectorized", saved_count
 
         except Exception as e:
-            logger.error("")
-            logger.error("=" * 60)
-            logger.error("❌ PDF 벡터화 실패")
-            logger.error(f"   에러: {str(e)}")
-            logger.error("=" * 60)
+            logger.error(f"PDF vectorization failed: {str(e)}")
             db.rollback()
-            return False, f"벡터화 중 오류 발생: {str(e)}", 0
+            return False, f"Vectorization error: {str(e)}", 0
     
     async def _parse_pdf_batch_with_gemini(
         self,
@@ -219,8 +192,6 @@ class VectorService:
         """
         import json
         import fitz  # PyMuPDF
-        
-        logger.info(f"   🤖 배치 {batch_index + 1}/{total_batches} Gemini 분석 중...")
         
         prompt = """당신은 학교 생활기록부 전문 분석가입니다.
 
@@ -274,7 +245,6 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
         
         try:
             # PDF에서 해당 페이지 추출
-            logger.info(f"   📎 PDF에서 페이지 추출 중... {page_numbers}")
             pdf_bytes.seek(0)
             doc = fitz.open(stream=pdf_bytes.read(), filetype="pdf")
             
@@ -300,10 +270,8 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
                 ))
             
             doc.close()
-            logger.info(f"   ✅ PDF 변환 완료: {len(pdf_parts)}페이지")
 
             # Pydantic 스키마 정의 (Structured Output)
-            logger.debug(f"   📋 Pydantic 스키마 정의 중...")
             class Record(BaseModel):
                 category: str
                 content: str
@@ -312,7 +280,6 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
                 records: list[Record]
 
             # Gemini 2.5 Flash에 요청 전송 (Structured Output으로 강제)
-            logger.info(f"   🚀 Gemini API 요청 전송 중... (이 부분에서 시간 소요될 수 있음)")
             response = self.client.models.generate_content(
                 model=self.chat_model,
                 contents=[prompt] + pdf_parts,
@@ -322,26 +289,15 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
                     "temperature": 0.7  # 중간 temperature로 반복 방지 + 창의성 유지
                 }
             )
-            logger.info(f"   ✅ Gemini API 응답 수신 완료")
             
             # 응답 텍스트 추출 및 JSON 파싱
-            logger.debug(f"   📝 응답 텍스트 추출 중...")
             response_text = response.text
-            logger.debug(f"   ✅ 응답 텍스트 추출 완료")
-
-            # 디버깅용 응답 요약 로그
-            logger.info(f"   ✅ Gemini 응답 수신: {len(response_text)}자")
-            logger.debug(f"   전체 응답:\n{response_text}")
+            logger.info(f"Gemini response received: {len(response_text)} characters")
             
             result = json.loads(response_text)
             
             records = result.get('records', [])
-            logger.info(f"   📦 추출된 청크: {len(records)}개")
-
-            # 각 청크 요약 로그
-            for i, record in enumerate(records):
-                content_preview = record['content'].replace('\n', ' ')[:200]  # 200자만 표시
-                logger.debug(f"      [{i+1}] {record['category']} - {content_preview}... ({len(record['content'])}자)")
+            logger.info(f"Extracted {len(records)} chunks from batch {batch_index + 1}")
             
             
             # RecordChunk 형식으로 변환
@@ -356,19 +312,11 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             return chunks
             
         except json.JSONDecodeError as e:
-            logger.error("")
-            logger.error("❌ JSON 파싱 실패")
-            logger.error(f"   에러: {e}")
-            logger.error(f"   응답 길이: {len(response_text)}자")
-            logger.error(f"   응답 미리보기: {response_text[:300]}...")
-            logger.error("=" * 60)
+            logger.error(f"JSON parsing failed: {e}, response length: {len(response_text)}")
             raise
 
         except Exception as e:
-            logger.error("")
-            logger.error("❌ Gemini 처리 중 에러 발생")
-            logger.error(f"   에러: {e}")
-            logger.error("=" * 60)
+            logger.error(f"Gemini processing error: {e}")
             raise
 
             # Gemini 2.5 Flash에 요청 전송 (Structured Output으로 강제)
@@ -396,12 +344,7 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             result = json.loads(response_text)
             
             records = result.get('records', [])
-            logger.info(f"   📦 추출된 청크: {len(records)}개")
-
-            # 각 청크 요약 로그
-            for i, record in enumerate(records):
-                content_preview = record['content'].replace('\n', ' ')[:200]  # 200자만 표시
-                logger.debug(f"      [{i+1}] {record['category']} - {content_preview}... ({len(record['content'])}자)")
+            logger.info(f"Extracted {len(records)} chunks from batch {batch_index + 1}")
             
             
             # RecordChunk 형식으로 변환
@@ -453,10 +396,7 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
 
             raise
         except Exception as e:
-            logger.error("")
-            logger.error("❌ Gemini 처리 중 에러 발생")
-            logger.error(f"   에러: {e}")
-            logger.error("=" * 60)
+            logger.error(f"Gemini processing error: {e}")
             raise
     
     def _pil_image_to_part(self, image):
@@ -484,7 +424,7 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             )
             return result.embeddings[0].values
         except Exception as e:
-            logger.error(f"   ❌ 임베딩 실패: {e}")
+            logger.error(f"Embedding failed: {e}")
             raise
 
 
