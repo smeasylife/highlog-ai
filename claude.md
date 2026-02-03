@@ -1,138 +1,148 @@
-📄 claude.md (Enterprise Button-Separated Version)
-1. Project Overview
-Goal: Gemini 2.5 Flash 기반으로학생부 기반의 시뮬레이션을 통해 사용자가 실제 대학 면접 환경을 경험하게 함. 단순히 질문을 던지는 것을 넘어, 답변의 근거와 판단 기준을 집요하게 묻는 '꼬리 질문(Tail Questions)' 시스템을 구축하여 실질적인 면접 대비를 도움.
+# 📄 [claude.md](http://claude.md/): Goat Heaven Project Specification
 
-2. Tech Stack
-AI Engine: Python 3.11+ / FastAPI / LangGraph
+## 1. Project Overview
 
-AI Model: Gemini 2.5 Flash (청킹, 질문 생성, 면접 등 전 과정).
+- **Goal**: Gemini 2.5 Flash를 활용하여 학생부 기반 시뮬레이션을 제공하고, 지원자의 답변 근거와 판단 기준을 집요하게 묻는 **'꼬리 질문(Tail Questions)'** 시스템을 통해 실전 면접 대비를 도움.
+- **Core Value**: 단순 질의응답을 넘어선 Deep-Dive 분석 및 실시간 피드백.
 
-Embedding: Google gemini-embedding-001 (3072차원).
+---
 
-Vector DB: PostgreSQL 15 + pgvector (Metadata Filter: record_id, category 필수).
+## 2. Tech Stack
 
-3. Separated Workflow Design
-3.1 Phase 1: Upload & Vectorization (Trigger: Upload Button)
-생기부 등록 시점에 데이터베이스를 미리 구축합니다. **SSE 스트리밍으로 실시간 진행률 전송**.
+- **AI Engine**: Python 3.11+ / FastAPI / LangGraph
+- **AI Model**: Gemini 2.5 Flash (전 과정 수행)
+- **Embedding**: Google gemini-embedding-001 (3072차원)
+- **Vector DB**: PostgreSQL 15 + pgvector (Metadata Filter: `record_id`, `category` 필수)
 
-S3 Upload: Client → S3 직접 업로드 (Presigned URL).
+---
 
-Ingestion with SSE Progress: FastAPI가 S3에서 PDF → 이미지 변환 (PyMuPDF) → Gemini 2.5 Flash로 카테고리별 청킹 → Embedding 수행.
+## 3. Workflow Design
 
-**SSE 진행률 단계**:
-- 0%: 시작
-- 10%: PDF 이미지 변환 중
-- 20%: 이미지 변환 완료
-- 30%: Gemini AI 청킹 시작
-- 30-70%: 배치별 청킹 진행 (3페이지씩)
-- 75%: 임베딩 및 DB 저장 시작
-- 100%: 완료
+### 3.1 Phase 1: Upload & Vectorization (Trigger: Upload Button)
 
-Chunking Rules: Gemini 2.5 Flash가 자동으로 카테고리 분류 (성적, 세특, 창체, 행특, 기타 5개) 및 개인정보 삭제.
+- **Mechanism**: SSE(Server-Sent Events) 스트리밍을 통한 실시간 진행률 전송.
+- **S3 Upload**: Client → S3 직접 업로드 (Presigned URL 활용).
+- **Ingestion Logic**: PDF → 이미지 변환(PyMuPDF) → Gemini 2.5 Flash 카테고리별 청킹 → Embedding 및 저장.
+- **🚨 Hallucination 방지**:
+    - 이미지 텍스트 그대로 추출 (추측/요약/Paraphrase 금지).
+    - 불분명한 텍스트는 `[일부 텍스트 누락]` 처리.
+    - 표 데이터(숫자, 날짜, 점수)의 절대적 정확도 유지.
 
-**🚨 Hallucination 방지 (정확성 원칙)**:
-- 이미지에 있는 텍스트만 있는 그대로 추출 (절대 추측 금지)
-- 텍스트의 띄어쓰기, 문장 부호, 줄바꿈을 그대로 유지
-- 내용을 추가, 요약, paraphrase 금지 - 원문 그대로만 추출
-- 불분명한 텍스트는 [일부 텍스트 누락]으로 표시
-- 표의 숫자, 날짜, 점수 등 모든 데이터를 정확하게 복사
+### 3.2 Phase 2: Bulk Question Generation (Trigger: Generate Button)
 
-Vector Store: 각 청크를 record_chunks 테이블에 저장하되, **record_id**를 기반으로 카테고리별 인덱싱.
+1. **SSE Handshake**: Spring Boot - FastAPI 간 스트림 연결.
+2. **Metadata Search**: `record_id` 기반 `record_chunks` 테이블 카테고리별 직접 조회.
+3. **Generator**: Gemini 2.5 Flash가 영역별 질문(5개 이하), 모범 답안, 질문 목적 생성.
+4. **Finalization**: `questions` 테이블 벌크 저장 후 스트림 종료.
 
-Status Update: student_records 테이블의 상태를 READY로 변경.
+---
 
-3.2 Phase 2: Bulk Question Generation (Trigger: Generate Button)
-사용자가 버튼 클릭 시 SSE 연결을 맺고 실시간으로 질문을 뽑아냅니다.
+## 4. AI Interviewer Technical Specification
 
-Step 1: SSE Handshake - Spring Boot와 FastAPI 간 SSE 스트림 연결.
+동일한 **LangGraph Logic**을 공유하되, 입출력 처리만 분리된 두 개의 엔드포인트를 운영함.
 
-Step 2: Metadata Search - 넘겨받은 record_id를 기반으로 벡터 DB에서 카테고리별(성적, 세특, 창체, 행특, 기타) 청크를 record_chunks 테이블에서 직접 조회.
+### **[API 1] Text-Based Interview (`/chat/text`)**
 
-Step 3: LangGraph Generator - Gemini 2.5 Flash가 영역별 질문(5개 이하) 및 모범 답안, 질문 목적을 생성.
+- **Input**: 사용자의 텍스트 답변, 소요 시간, 현재 상태(State).
+- **Process**: LangGraph → `analyzer` → `generator` → Text Output.
+- **Output**: 다음 질문 텍스트, 업데이트된 상태(State), 실시간 분석 데이터.
 
-Step 4: Progress Streaming - 각 노드 완료 시 진행률(%)과 상태 메시지 yield.
+### **[API 2] Audio-Based Interview (`/chat/audio`)**
 
-(예: 20% - 성적 분석 중... -> 50% - 세특 질문 생성 중...)
+- **Input**: 사용자의 음성 파일(Multipart/form-data), 소요 시간, 현재 상태(State).
+- **Process**:
+    1. **STT**: Gemini 2.5 Flash Native Audio를 통해 음성 파일을 텍스트로 즉시 변환.
+    2. **Graph**: 변환된 텍스트로 동일한 LangGraph 로직 수행.
+    3. **TTS**: 생성된 질문 텍스트를 Google Cloud TTS를 통해 고음질 음성 파일로 변환.
+- **Output**: 다음 질문 음성 파일(URL), 질문 텍스트, 업데이트된 상태(State), 실시간 분석 데이터.
 
-Step 5: Finalization - 생성된 질문 세트를 questions 테이블에 벌크 저장 후 스트림 종료.
+### 4.1 Interview Flow
 
-3-3. LangGraph 워크플로우 설계 (Graph Logic)
-면접의 흐름은 아래와 같은 상태(State)와 노드(Node) 구성을 따름.
+- **Trigger**: 프론트엔드의 "자기소개 부탁드립니다" 멘트 후 사용자의 **첫 답변** 시 LangGraph 구동.
+- **UI/UX**: 실시간 챗봇 형태, 타이머 정보 및 답변 소요 시간 데이터 동기화.
 
-[State Definition]
-conversation_history: 현재까지 진행된 대화 리스트.
+### 4.2 State Definition
 
-current_context: 벡터 DB에서 검색된 학생부의 특정 항목 정보.
+```python
+class InterviewState(TypedDict):
+    difficulty: str            # 면접 난이도 (Easy, Normal, Hard)
+    remaining_time: int        # 남은 시간 (초 단위)
+    interview_stage: str       # [INTRO, MAIN, WRAP_UP]
 
-question_count: 현재 질문 차수 (최대 10분 기준 조절).
+    conversation_history: List[BaseMessage]
+    current_context: List[str] # 현재 질문/주제와 관련된 학생부 청크 리스트 (Multi-chunk)
+    current_sub_topic: str     # 현재 진행 중인 세부 주제 (예: '리더십', '봉사')
+    asked_sub_topics: List[str]# 이미 완료된 세부 주제 리스트
 
-time: 현재 남은 면접 시간(최대 10분).
+    answer_metadata: List[Dict] # 각 질문별 [답변시간, 평가, 개선포인트] 딕셔너리 리스트
+    scores: Dict[str, int]     # [전공적합성, 인성, 발전가능성, 의사소통]
+```
+answer_metadata의 권장 구조
 
-evaluation_scores: 답변의 충실도, 논리성 등에 대한 실시간 점수.
-
-interview_stage: [도입 - 본질 질문 - 꼬리 질문 - 심화 질문 - 마무리] 단계 구분.
-
-[Graph Nodes]
-START → initialize_interview (첫 질문 생성)
-
-User Answer → analyzer (답변 분석 + 경로 결정)
-
-Decision Bridge (Conditional Edge):
-
-IF [심화 필요]: → generate_follow_up (DB 검색 생략, 현재 current_context 활용)
-
-IF [주제 전환]: → retrieve_record (새로운 항목 검색) → generate_main_question
-
-IF [시간 초과/종료]: → wrap_up
-
-노드 명칭: initialize_interview
-
-작동 방식:
-
-visited_nodes_history가 비어있을 때 딱 한 번 실행.
-
-전체 생기부에서 가장 '임팩트 있는(Similarity가 높은게 아니라, 분량이 많거나 핵심 키워드가 담긴)' 항목 하나를 메인으로 잡거나,
-
-"자기소개와 함께 가장 공들였던 프로젝트 하나를 소개해달라"는 Ice-breaking 질문으로 시작.
-
-- AI 면접관 페르소나 (System Prompt)
-Persona Name: 하이로그(Highlog) 면접 위원
-Role: 지원자의 학생부 진위 여부를 확인하고, 경험 속에서의 성장 가능성을 발굴하는 전문 면접관.
-
-질문 생성 원칙 (Guidelines)
-사실 검증: 학생부에 적힌 행동의 구체적인 역할을 먼저 묻는다.
-
-Deep Dive (꼬리 질문): 답변이 나오면 그 행동의 **'왜(Why)'**와 **'판단 기준'**을 되묻는다. (예: "그 행동이 왜 필요했나요? 본인만의 판단 근거를 말씀해 주세요.")
-
-공감 및 유도: 답변이 막힐 경우 "조금 더 구체적으로 말씀해 주실 수 있을까요?"와 같이 부드러운 압박을 사용한다.
-
-Context Grounding: 모든 질문은 반드시 retrieve_record에서 제공된 학생부 데이터에 기반해야 하며, 소설을 쓰지 않는다.
-
-- 시맨틱 검색 연동 (RAG Strategy)gemini-embedding-001을 통해 검색된 상위 $k$개의 청크를 프롬프트에 주입할 때의 구조는 다음과 같음.
-
-'''
+analyzer가 이 데이터를 넣습니다. score의 점수를 보고 분기 로직을 결정합니다.
 {
-  "context_retrieval": {
-    "source_record": "{retrieved_text}",
-    "similarity_score": "{score}",
-    "instruction": "위 기록을 바탕으로 지원자가 수행한 프로젝트의 구체적인 '기술적 해결 과정'을 묻는 질문을 생성할 것."
-  }
+  "question_idx": 1,                // 질문 순서
+  "sub_topic": "리더십",             // 어떤 하위 주제였는지
+  "question": "동아리 부장으로서 갈등을 해결한 구체적인 사례는?", 
+  "answer": "팀원 간 의견 차이가 있을 때 중간에서...", 
+  "response_time": 45,              // 프론트에서 넘겨받은 초 단위 시간
+  "evaluation": {
+    "score": 85,                    // analyzer 노드에서 매긴 점수
+    "grade": "좋음",                // 좋음/보통/개선
+    "feedback": "구체적인 수치나 결과가 포함되면 좋겠습니다.",
+    "strength_tags": ["논리적 구조", "차분한 태도"],
+    "weakness_tags": ["구체적 사례 부족"]
+  },
+  "context_used": ["학생부_청크_ID_123", "학생부_청크_ID_456"] // 근거 데이터 추적용
 }
-'''
 
--  꼬리 질문 및 로직 상세 (Follow-up Logic)
-사용자의 답변이 입력되면 아래 3단계 로직을 거쳐 다음 질문을 결정함.
+### 4.3 Graph Nodes & Conditional Logic
 
-단계,체크 항목,액션
-1단계: 충실도 검사,답변이 너무 짧거나(50자 미만) 핵심 키워드가 없는가?,액션: 구체적인 사례를 다시 요구하는 꼬리 질문.
-2단계: 인과관계 확인,행동은 있는데 '이유'나 '결과'가 빠져 있는가?,"액션: ""그 행동이 왜 필요했는지 근거를 설명해달라""는 심화 질문."
-3단계: 주제 전환,해당 항목에 대해 충분히 파악되었는가? (질문 3회 이상),액션: 다음 학생부 항목으로 주제 전환.
+- **Nodes**:
+    - `analyzer`: 답변 분석 후 [꼬리 질문 / 주제 전환 / 종료] 경로 결정.
+    - `retrieve_new_topic`: 미중복 하위 주제 랜덤 선택 후 벡터 DB에서 새로운 청크 리스트 검색.
+    - `follow_up_generator`: `current_context` 유지하며 구체적 근거(Why) 및 판단 기준 질문 생성.
+    - `new_question_generator`: 새로운 주제 청크 기반 첫 질문 생성.
+    - `wrap_up`: 10분 초과 또는 주제 소진 시 최종 결과 데이터 생성.
+- **Conditional Logic (Analyzer)**:
+    - **IF [충실도 낮음/구체성 부족]**: → `follow_up_generator` (꼬리 질문)
+    - **IF [충실도 높음/주제 소진(3회 이상)]**: → `retrieve_new_topic` (주제 전환)
+    - **IF [남은 시간 < 30초]**: → `wrap_up` (종료)
 
-4. Key Development Rules
-Gemini Native Audio: 면접 시 별도 STT 없이 음성 파일을 직접 Gemini 2.5 Flash에 전달.
+## 5. Sub-Topic & RAG Strategy
 
-비용: 10분 면접 기준 약 26원 (1초당 32토큰 계산).
+### 5.1 하위 주제 기반 검색 전략
 
-Professional TTS: Google Cloud TTS를 활용해 신뢰감 있는 면접관 목소리 생성.
+| **하위 주제** | **검색 및 질문 가이드라인** |
+| --- | --- |
+| **출결** | 지각/결석 패턴 사유 확인 및 성실성 검증. |
+| **성적** | 전공 과목 성적 추이 및 학년별 변화 이유 분석. |
+| **동아리** | 프로젝트 내 역할, 기술적 해결 과정, 협업 사례. |
+| **리더십** | 갈등 상황에서의 본인만의 해결 메커니즘. |
+| **인성/태도** | 행특 기록 기반 본인의 대표 특성 에피소드 증명. |
+| **진로/자율** | 지원 전공 관심 계기와 활동 간의 연결고리. |
+| **독서** | 언급된 도서가 가치관 및 탐구에 미친 영향. |
+| **봉사** | 활동의 지속성, 배운 점 및 공동체 의식 변화. |
 
-Structured Output: AI 응답은 반드시 Pydantic 모델을 통해 JSON 포맷으로 강제.
+### 5.2 꼬리 질문 (Deep Dive) 로직
+
+- **Context Utilization**: `current_context` 내 다중 청크를 교차 검증하여 질문 생성.
+- **Focus**: 행동의 **'판단 근거'**와 **'배운 점'**을 집요하게 캐묻는 질문 생성.
+- **Difficulty**: `Hard` 모드 시 논리적 허점을 찌르는 압박 질문 위주 구성.
+
+---
+
+## 6. 결과 분석 및 요약 (Wrap-up)
+
+- **종합 평가**: 전체 답변 시간 평균 및 논리성 점수 합산.
+- **강점/약점 추출**:
+    - **강점**: 답변 시간이 적절하고 구체적 사례가 포함된 주제.
+    - **약점**: 답변 지연 혹은 근거가 빈약했던 주제.
+- **개선 포인트**: 질문별 피드백(결론 중심 말하기, 수치 활용 등) 생성.
+
+## 7. Key Development Rules
+
+- **Gemini Native Audio**: 별도 STT 없이 음성 파일 직접 Gemini 2.5 Flash 전달.
+- **Professional TTS**: Google Cloud TTS를 활용한 신뢰감 있는 음성 생성.
+- **Structured Output**: AI 응답은 반드시 Pydantic 모델을 통한 JSON 포맷 강제.
+- **Cost**: 10분 면접 기준 약 26원 예상 (1초당 32토큰 계산).
