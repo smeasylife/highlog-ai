@@ -107,7 +107,7 @@ data: {"type": "error", "progress": 0}
 
 ## 3. 실시간 면접 (Real-time Interview)
 
-### 3-1. 텍스트 기반 면접
+### 3-1. 면접 시작
 
 ### POST /chat/text
 
@@ -117,7 +117,6 @@ data: {"type": "error", "progress": 0}
 ```json
 {
   "record_id": 10,
-  "session_id": "uuid-thread-id",
   "answer": "동아리 부장으로서 팀원 간의 의견 차이를 조율했습니다.",
   "response_time": 45,
   "state": {
@@ -125,11 +124,12 @@ data: {"type": "error", "progress": 0}
     "remaining_time": 540,
     "interview_stage": "MAIN",
     "current_sub_topic": "리더십",
-    "asked_sub_topics": ["인성", "진로"],
+    "asked_sub_topics": ["인성"],
     "conversation_history": [...],
-    "current_context": ["chunk_id_1", "chunk_id_2"],
+    "current_context": ["청크 텍스트1"],
     "answer_metadata": [...],
-    "scores": {...}
+    "scores": {...},
+    "follow_up_count": 0
   }
 }
 ```
@@ -138,30 +138,48 @@ data: {"type": "error", "progress": 0}
 ```json
 {
   "next_question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?",
-  "updated_state": { ... },
-  "analysis": {
-    "question_idx": 3,
-    "evaluation": {
-      "score": 75,
-      "grade": "보통",
-      "feedback": "구체적인 방법과 결과가 포함되면 좋겠습니다.",
-      "strength_tags": ["리더십 경험"],
-      "weakness_tags": ["구체성 부족"]
-    }
+  "updated_state": {
+    "difficulty": "Normal",
+    "remaining_time": 495,
+    "interview_stage": "MAIN",
+    "current_sub_topic": "리더십",
+    "asked_sub_topics": ["인성"],
+    "conversation_history": [...],
+    "current_context": ["청크 텍스트1"],
+    "answer_metadata": [
+      {
+        "question": "리더십 경험에 대해 말씀해주세요",
+        "answer": "동아리 부장으로서 팀원 간의 의견 차이를 조율했습니다.",
+        "response_time": 45,
+        "sub_topic": "리더십",
+        "evaluation": {
+          "score": 75,
+          "grade": "보통",
+          "feedback": "구체적인 방법과 결과가 포함되면 좋겠습니다.",
+          "strength_tags": ["리더십 경험"],
+          "weakness_tags": ["구체성 부족"]
+        },
+        "context_used": ["청크 텍스트1"]
+      }
+    ],
+    "scores": {
+      "전공적합성": 0,
+      "인성": 75,
+      "발전가능성": 0,
+      "의사소통": 0
+    },
+    "follow_up_count": 0
   },
-  "should_continue": true
+  "analysis": {
+    "score": 75,
+    "grade": "보통",
+    "feedback": "구체적인 방법과 결과가 포함되면 좋겠습니다.",
+    "strength_tags": ["리더십 경험"],
+    "weakness_tags": ["구체성 부족"]
+  },
+  "is_finished": false
 }
 ```
-
-**LangGraph Flow:**
-1. `analyzer` 노드: 답변 분석 → [꼬리 질문 / 주제 전환 / 종료] 결정
-2. `follow_up_generator` 또는 `new_question_generator`: 다음 질문 생성
-3. State 업데이트 및 반환
-
-**Conditional Logic:**
-- **IF [충실도 낮음/구체성 부족]**: → 꼬리 질문 (follow_up_generator)
-- **IF [충실도 높음/주제 소진(3회 이상)]**: → 주제 전환 (retrieve_new_topic)
-- **IF [남은 시간 < 30초]**: → 종료 (wrap_up)
 
 ---
 
@@ -174,20 +192,19 @@ data: {"type": "error", "progress": 0}
 **Request:** `multipart/form-data`
 ```
 record_id: 10
-session_id: uuid-thread-id
-audio: (audio file - mp3, wav, m4a)
+audio_file: (audio file - mp3, wav, m4a, webm)
 response_time: 45
-state: {...}
+state_json: '{"difficulty": "Normal", "remaining_time": 540, ...}'
 ```
 
 **Response:**
 ```json
 {
-  "question_audio_url": "https://s3.../question_45.mp3",
-  "question_text": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?",
-  "updated_state": { ... },
-  "analysis": { ... },
-  "should_continue": true
+  "next_question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?",
+  "updated_state": {...},
+  "analysis": {...},
+  "is_finished": false,
+  "audio_url": "https://s3.../question_45.mp3"
 }
 ```
 
@@ -196,47 +213,281 @@ state: {...}
 2. **Graph**: `/chat/text`와 동일한 LangGraph 로직 수행
 3. **TTS**: 생성된 질문 텍스트를 Google Cloud TTS로 음성 변환
 
-**Database Impact:**
-- `interview_sessions` 테이블의 `interview_logs` (JSONB)에 실시간 답변 및 평가 저장
-- 종료 시 `final_report` (JSONB)에 종합 리포트 저장
+---
 
-**interview_logs 구조 예시:**
-```json
-[
-  {
-    "question_idx": 1,
-    "sub_topic": "리더십",
-    "question": "동아리 부장으로서 갈등을 해결한 구체적인 사례는?",
-    "answer": "팀원 간 의견 차이가 있을 때 중간에서...",
-    "response_time": 45,
-    "evaluation": {
-      "score": 85,
-      "grade": "좋음",
-      "feedback": "구체적인 수치나 결과가 포함되면 좋겠습니다.",
-      "strength_tags": ["논리적 구조", "차분한 태도"],
-      "weakness_tags": ["구체적 사례 부족"]
-    },
-    "context_used": ["학생부_청크_ID_123", "학생부_청크_ID_456"]
-  }
-]
-```
+---
 
-**final_report 구조 예시:**
+### 3-3. State 관리 방식
+
+> **중요**: 면접 상태는 **LangGraph의 PostgresSaver Checkpointer가 자동으로 저장**합니다. 각 노드 실행 후 PostgreSQL에 checkpoint가 생성되며, 필요시 특정 시점으로 롤백 가능합니다.
+
+### POST /chat/text
+
+사용자의 텍스트 답변을 받아 LangGraph 기반 AI 인터뷰어가 분석하고 다음 질문을 생성합니다.
+
+**Request:**
 ```json
 {
-  "total_duration": 600,
-  "average_response_time": 45,
-  "scores": {
-    "전공적합성": 85,
-    "인성": 78,
-    "발전가능성": 82,
-    "의사소통": 90
-  },
-  "strengths": ["논리적 구조", "구체적 사례 제시"],
-  "weaknesses": ["수치적 근거 부족", "결론 명확성 부족"],
-  "improvement_points": ["결론 중심 말하기", "구체적 수치 활용"]
+  "record_id": 10,
+  "answer": "동아리 부장으로서 팀원 간의 의견 차이를 조율했습니다.",
+  "response_time": 45,
+  "state": {
+    "difficulty": "Normal",
+    "remaining_time": 540,
+    "interview_stage": "MAIN",
+    "current_sub_topic": "리더십",
+    "asked_sub_topics": ["인성", "진로"],
+    "conversation_history": [
+      {"type": "ai", "content": "리더십 경험에 대해 말씀해주세요"}
+    ],
+    "current_context": ["청크 텍스트1", "청크 텍스트2"],
+    "answer_metadata": [
+      {
+        "question": "이전 질문",
+        "answer": "이전 답변",
+        "response_time": 30,
+        "sub_topic": "인성",
+        "evaluation": {...}
+      }
+    ],
+    "scores": {
+      "전공적합성": 0,
+      "인성": 80,
+      "발전가능성": 0,
+      "의사소통": 0
+    },
+    "follow_up_count": 0
+  }
 }
 ```
+
+**Response:**
+```json
+{
+  "next_question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?",
+  "updated_state": {
+    "difficulty": "Normal",
+    "remaining_time": 495,
+    "interview_stage": "MAIN",
+    "current_sub_topic": "리더십",
+    "asked_sub_topics": ["인성", "진로"],
+    "conversation_history": [
+      {"type": "ai", "content": "리더십 경험에 대해 말씀해주세요"},
+      {"type": "human", "content": "동아리 부장으로서..."},
+      {"type": "ai", "content": "구체적으로 어떤 방법으로..."}
+    ],
+    "current_context": ["청크 텍스트1", "청크 텍스트2"],
+    "answer_metadata": [
+      {
+        "question": "이전 질문",
+        "answer": "이전 답변",
+        "response_time": 30,
+        "sub_topic": "인성",
+        "evaluation": {...}
+      },
+      {
+        "question": "리더십 경험에 대해 말씀해주세요",
+        "answer": "동아리 부장으로서 팀원 간의 의견 차이를 조율했습니다.",
+        "response_time": 45,
+        "sub_topic": "리더십",
+        "evaluation": {
+          "score": 75,
+          "grade": "보통",
+          "feedback": "구체적인 방법과 결과가 포함되면 좋겠습니다.",
+          "strength_tags": ["리더십 경험"],
+          "weakness_tags": ["구체성 부족"]
+        },
+        "context_used": ["청크 텍스트1", "청크 텍스트2"]
+      }
+    ],
+    "scores": {
+      "전공적합성": 0,
+      "인성": 155,
+      "발전가능성": 0,
+      "의사소통": 0
+    },
+    "follow_up_count": 0
+  },
+  "analysis": {
+    "score": 75,
+    "grade": "보통",
+    "feedback": "구체적인 방법과 결과가 포함되면 좋겠습니다.",
+    "strength_tags": ["리더십 경험"],
+    "weakness_tags": ["구체성 부족"]
+  },
+  "is_finished": false
+}
+```
+
+---
+
+### 3-2. 음성 기반 면접
+
+### POST /chat/audio
+
+사용자의 음성 파일을 받아 STT → LangGraph → TTS 과정을 거쳐 음성 질문을 반환합니다.
+
+**Request:** `multipart/form-data`
+```
+record_id: 10
+audio_file: (audio file - mp3, wav, m4a, webm)
+response_time: 45
+state_json: '{"difficulty": "Normal", "remaining_time": 540, ...}'
+```
+
+**Response:**
+```json
+{
+  "next_question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?",
+  "updated_state": {...},
+  "analysis": {...},
+  "is_finished": false,
+  "audio_url": "https://s3.../question_45.mp3"
+}
+```
+
+**Process:**
+1. **STT**: Gemini 2.5 Flash Native Audio로 음성 파일을 텍스트로 변환
+2. **Graph**: `/chat/text`와 동일한 LangGraph 로직 수행
+3. **TTS**: 생성된 질문 텍스트를 Google Cloud TTS로 음성 변환
+
+---
+
+### 3-3. State 관리 방식
+
+```
+┌──────────────────────────────────────────────────────┐
+│                    클라이언트                         │
+│  ┌──────────────────────────────────────────────┐   │
+│  │        InterviewState (메모리)               │   │
+│  │  - difficulty: "Normal"                      │   │
+│  │  - remaining_time: 540                      │   │
+│  │  - conversation_history: [...]              │   │
+│  │  - answer_metadata: [...]                  │   │
+│  │  - scores: {...}                            │   │
+│  └──────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────┘
+        │
+        │ POST /chat/text 또는 /chat/audio (매 턴)
+        │ + record_id + state + answer
+        ▼
+┌──────────────────────────────────────────────────────┐
+│              서버 (LangGraph + Checkpointer)         │
+│                                                       │
+│  1. analyzer: 답변 분석                              │
+│  2. follow_up/new_question_generator                │
+│  3. State 업데이트                                  │
+│  4. ✅ PostgresSaver가 checkpoint 자동 저장         │
+│     (PostgreSQL checkpoints 테이블)                 │
+└──────────────────────────────────────────────────────┘
+        │
+        │ Response: updated_state + next_question
+        ▼
+┌──────────────────────────────────────────────────────┐
+│         LangGraph Checkpoints (PostgreSQL)           │
+│  - thread_id별 checkpoint 자동 저장                  │
+│  - 각 노드 실행 후 상태 스냅샷 생성                  │
+│  - 필요시 특정 checkpoint로 롤백 가능               │
+└──────────────────────────────────────────────────────┘
+```
+
+**동작 흐름:**
+
+1. **면접 시작**: 클라이언트가 초기 state를 생성하여 첫 요청 전송
+2. **매 턴**: `POST /chat/text` 또는 `/chat/audio`로 답변 전송
+   - LangGraph가 답변 분석 및 다음 질문 생성
+   - **PostgresSaver가 각 노드 실행 후 checkpoint 자동 저장**
+3. **종료**: `updated_state.is_finished == true` 시 면접 종료
+   - DB에 `interview_sessions` 레코드 생성
+   - `thread_id` 발급
+   - 초기 State 반환
+
+2. **매 턴마다 반복** (`POST /chat/text` or `/chat/audio`):
+   - 클라이언트: `session_id` + State + 답변 + response_time 전송
+   - 서버: LangGraph 실행 → State 업데이트 → **DB에 `answer_metadata` 저장**
+   - 클라이언트: 업데이트된 State로 교체
+
+3. **면접 종료** (`POST /interview/end`):
+   - DB에서 `interview_logs` 누적 데이터 읽기
+   - `final_report` 생성 (점수 합산)
+   - DB에 저장, `status` = "COMPLETED"
+
+**롤백 기능:**
+- 중단 시 `session_id`로 DB 조회
+- `interview_logs`에서 마지막 State 복원
+- 이어서 진행 가능
+
+---
+
+### 3-4. LangGraph 노드 및 로직
+
+#### 노드 (Nodes)
+
+| 노드 | 역할 | 설명 |
+|------|------|------|
+| `analyzer` | 답변 분석 | 충실도, 구체성, 논리성 평가 (0-100점), 강점/약점 태그 추출, 다음 액션 결정 |
+| `follow_up_generator` | 꼬리 질문 생성 | 답변의 사례, 근거, 배운 점을 집요하게 캐묻기 ("왜?", "구체적으로?") |
+| `retrieve_new_topic` | 새 주제 검색 | 미중복 주제 랜덤 선택, 벡터 DB에서 관련 청크 검색 |
+| `new_question_generator` | 첫 질문 생성 | 새 주제에 대한 개방형 질문 생성 |
+| `wrap_up` | 종료 | 종합 평가 생성 |
+
+#### 조건부 분기 (Conditional Logic)
+
+```python
+# interview_graph.py:552-553
+if state['remaining_time'] < 30:
+    → wrap_up
+
+# interview_graph.py:229-243 (점수 매핑)
+topic_score_mapping = {
+    "성적": "전공적합성",
+    "동아리": "전공적합성",
+    "리더십": "인성",
+    "인성/태도": "인성",
+    "봉사": "인성",
+    "진로/자율": "발전가능성",
+    "독서": "발전가능성",
+    "출결": "의사소통"
+}
+
+# 분석 결과에 따른 분기
+if evaluation['score'] < 60 or follow_up_count < 3:
+    → follow_up_generator (꼬리 질문)
+
+elif len(asked_sub_topics) >= 8:  # 모든 주제 소진
+    → wrap_up (종료)
+
+else:
+    → retrieve_new_topic → new_question_generator (주제 전환)
+```
+
+---
+
+### 3-5. answer_metadata 구조
+
+매 답변마다 클라이언트 메모리에 누적되는 데이터:
+
+```json
+{
+  "question": "동아리 부장으로서 갈등을 해결한 구체적인 사례는?",
+  "answer": "팀원 간 의견 차이가 있을 때 중간에서 조율했습니다...",
+  "response_time": 45,
+  "sub_topic": "리더십",
+  "evaluation": {
+    "score": 75,
+    "grade": "보통",
+    "feedback": "구체적인 방법과 결과가 포함되면 좋겠습니다.",
+    "strength_tags": ["리더십 경험"],
+    "weakness_tags": ["구체성 부족"]
+  },
+  "context_used": ["청크1", "청크2"]
+}
+```
+
+**등급 기준**:
+- **좋음** (80-100점): 구체적 사례, 논리적 구조, 명확한 근거
+- **보통** (60-79점): 일반적인 답변, 다소 추상적
+- **개선** (0-59점): 답변 부족, 근거 빈약
 
 ---
 
@@ -260,4 +511,8 @@ state: {...}
 - `record_chunks`: 벡터화된 청크 (embedding: 768차원)
 - `question_sets`: 질문 세트 (대학/전공/전형 정보)
 - `questions`: AI 생성 질문
-- `interview_sessions`: 실시간 면접 세션 및 결과 (JSONB)
+
+**⚠️ 면접 세션 DB 미사용**:
+- 현재 면접 데이터는 **DB에 저장되지 않습니다**
+- 클라이언트가 모든 State를 관리합니다
+- 추후 면접 세션 저장 기능 추가 시 DB 설계 예정

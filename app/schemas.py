@@ -9,9 +9,6 @@ class CreateRecordRequest(BaseModel):
     """생기부 등록 요청"""
     title: str = Field(..., description="생기부 제목")
     s3Key: str = Field(..., description="S3 객체 키")
-    targetSchool: Optional[str] = Field(None, description="목표 학교")
-    targetMajor: Optional[str] = Field(None, description="목표 전공")
-    interviewType: Optional[str] = Field("종합전형", description="전형 유형")
 
 
 class VectorizeRequest(BaseModel):
@@ -21,10 +18,10 @@ class VectorizeRequest(BaseModel):
 
 class GenerateQuestionsRequest(BaseModel):
     """벌크 질문 생성 요청"""
-    record_id: int = Field(..., description="생기부 ID")
-    target_school: Optional[str] = Field(None, description="목표 학교")
-    target_major: Optional[str] = Field(None, description="목표 전공")
-    interview_type: Optional[str] = Field("종합전형", description="전형 유형")
+    title: Optional[str] = Field(None, description="질문 세트 제목 (예: '한양대 컴퓨터공학과 학생부종합')")
+    target_school: str = Field(..., description="목표 학교 (예: '한양대학교')")
+    target_major: str = Field(..., description="목표 전공 (예: '컴퓨터공학과')")
+    interview_type: str = Field("학생부종합", description="전형 유형 (예: '학생부종합')")
 
 
 # ========== Response Schemas ==========
@@ -89,10 +86,11 @@ class TextChatRequest(BaseModel):
     answer: str = Field(..., description="사용자 답변")
     response_time: int = Field(..., description="답변 소요 시간 (초)")
     state: InterviewStateInput = Field(..., description="현재 면접 상태")
+    thread_id: str = Field(..., description="LangGraph thread ID (Checkpointer용)")
 
 
 class AudioChatRequest(BaseModel):
-    """오디오 기반 면접 요청 (multipart/form-data용 필드 정의)"""
+    """오디오 기반 면접 요청 (multipart/form-data용 필드 정의) - 참고용"""
     record_id: int
     response_time: int
     state_json: str  # JSON 직렬화된 InterviewStateInput

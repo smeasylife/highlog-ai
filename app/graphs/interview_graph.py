@@ -1,17 +1,20 @@
 """실시간 면접 LangGraph 구현
 
 꼬리 질문(Tail Questions) 시스템을 통해 심층적인 면접을 수행합니다.
+상태 저장은 LangGraph의 PostgresSaver Checkpointer가 자동으로 처리합니다.
 """
 from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from operator import add
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_checkpoint_postgres import PostgresSaver
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 from config import settings
 import logging
 import json
+import asyncpg
 
 logger = logging.getLogger(__name__)
 
@@ -20,25 +23,30 @@ logger = logging.getLogger(__name__)
 
 class InterviewState(TypedDict):
     """면접 상태"""
-    
+
     # 기본 설정
     difficulty: str                    # 면접 난이도 (Easy, Normal, Hard)
     remaining_time: int                # 남은 시간 (초 단위)
     interview_stage: str               # [INTRO, MAIN, WRAP_UP]
-    
+
     # 대화 컨텍스트
     conversation_history: List[BaseMessage]  # 대화 기록
     current_context: List[str]         # 현재 질문/주제와 관련된 학생부 청크 리스트
     current_sub_topic: str             # 현재 진행 중인 세부 주제
     asked_sub_topics: List[str]        # 이미 완료된 세부 주제 리스트
-    
+
     # 분석 데이터
     answer_metadata: List[Dict]        # 각 질문별 [답변시간, 평가, 개선포인트]
     scores: Dict[str, int]             # [전공적합성, 인성, 발전가능성, 의사소통]
-    
+
     # 내부 상태
     next_action: str                   # [follow_up, new_topic, wrap_up]
     follow_up_count: int               # 현재 주제에 대한 꼬리 질문 횟수
+
+    # 현재 답변 정보 (graph 실행 시 필요)
+    current_user_answer: str           # 현재 사용자 답변
+    current_response_time: int         # 현재 답변 소요 시간
+    record_id: int                     # 생기부 ID
 
 
 # ==================== Pydantic 모델 ====================
@@ -77,30 +85,53 @@ SUB_TOPICS = [
 
 class InterviewGraph:
     """실시간 면접 LangGraph"""
-    
+
     def __init__(self):
         # Google GenAI 클라이언트 초기화
         self.client = genai.Client(api_key=settings.google_api_key)
         self.model = "gemini-2.5-flash-lite"
         self.types = types
-        
-        # 그래프 빌드
+
+        # Postgres Checkpointer 초기화
+        self.checkpointer = self._init_checkpointer()
+
+        # 그래프 빌드 (with checkpointer)
         self.graph = self._build_graph()
+
+    def _init_checkpointer(self) -> PostgresSaver:
+        """PostgresSaver Checkpointer 초기화"""
+        try:
+            # DB 연결 문자열 구성
+            db_url = (
+                f"postgresql://{settings.db_user}:{settings.db_password}"
+                f"@{settings.db_host}:{settings.db_port}/{settings.db_name}"
+            )
+
+            # PostgresSaver 초기화 (async)
+            checkpointer = PostgresSaver.from_conn_string(db_url)
+
+            logger.info("PostgresSaver checkpointer initialized successfully")
+            return checkpointer
+
+        except Exception as e:
+            logger.error(f"Failed to initialize PostgresSaver: {e}")
+            # Checkpointer 실패 시에는 None 반환 (fallback)
+            return None
     
     def _build_graph(self) -> StateGraph:
         """LangGraph 빌드"""
         workflow = StateGraph(InterviewState)
-        
+
         # 노드 추가
         workflow.add_node("analyzer", self.analyzer)
         workflow.add_node("retrieve_new_topic", self.retrieve_new_topic)
         workflow.add_node("follow_up_generator", self.follow_up_generator)
         workflow.add_node("new_question_generator", self.new_question_generator)
         workflow.add_node("wrap_up", self.wrap_up)
-        
+
         # 엔트리 포인트
         workflow.set_entry_point("analyzer")
-        
+
         # 조건부 엣지
         workflow.add_conditional_edges(
             "analyzer",
@@ -111,25 +142,25 @@ class InterviewGraph:
                 "wrap_up": "wrap_up"
             }
         )
-        
+
         # 일반 엣지
         workflow.add_edge("retrieve_new_topic", "new_question_generator")
         workflow.add_edge("follow_up_generator", END)
         workflow.add_edge("new_question_generator", END)
         workflow.add_edge("wrap_up", END)
-        
-        return workflow.compile()
+
+        # Checkpointer와 함께 컴파일
+        return workflow.compile(checkpointer=self.checkpointer)
     
-    async def analyzer(
-        self, 
-        state: InterviewState,
-        user_answer: str,
-        response_time: int
-    ) -> InterviewState:
+    async def analyzer(self, state: InterviewState) -> InterviewState:
         """답변 분석 및 다음 액션 결정"""
         try:
             logger.info(f"Analyzing answer for topic: {state.get('current_sub_topic', 'INTRO')}")
-            
+
+            # 현재 답변 정보 가져오기
+            user_answer = state.get('current_user_answer', '')
+            response_time = state.get('current_response_time', 0)
+
             # 마지막 질문 가져오기
             last_question = ""
             if state['conversation_history']:
@@ -137,10 +168,10 @@ class InterviewGraph:
                     if isinstance(msg, AIMessage):
                         last_question = msg.content
                         break
-            
+
             # 컨텍스트 텍스트 구성
             context_text = "\n\n".join(state.get('current_context', []))
-            
+
             # 프롬프트 구성
             prompt = f"""당신은 대학 입시 면접관입니다. 학생의 답변을 분석하고 다음 단계를 결정하세요.
 
@@ -533,57 +564,56 @@ JSON 형식으로 응답하세요."""
         state: InterviewState,
         user_answer: str,
         response_time: int,
-        record_id: int
+        record_id: int,
+        thread_id: str
     ) -> Dict[str, Any]:
         """
-        답변 처리 및 다음 질문 생성 (공통 로직)
-        
+        답변 처리 및 다음 질문 생성 (LangGraph invoke 방식)
+
+        Args:
+            state: 현재 면접 상태
+            user_answer: 사용자 답변
+            response_time: 답변 소요 시간
+            record_id: 생기부 ID
+            thread_id: LangGraph thread ID (Checkpointer용)
+
         Returns:
-            Dict with next_question and updated_state
+            Dict with next_question, updated_state, is_finished
         """
         try:
             # 사용자 답변을 대화 기록에 추가
             state['conversation_history'].append(HumanMessage(content=user_answer))
-            
+
             # 시간 업데이트
             state['remaining_time'] -= response_time
-            
+
+            # 현재 답변 정보를 state에 설정
+            state['current_user_answer'] = user_answer
+            state['current_response_time'] = response_time
+            state['record_id'] = record_id
+
             # 남은 시간 체크
             if state['remaining_time'] < 30:
                 state['next_action'] = "wrap_up"
-            
-            # 그래프 실행
-            initial_state = state.copy()
-            
-            # analyzer 실행
-            state = await self.analyzer(state, user_answer, response_time)
-            
-            # 조건부 분기
-            action = state.get('next_action', 'wrap_up')
-            
-            if action == "follow_up":
-                state = await self.follow_up_generator(state)
-            elif action == "new_topic":
-                state = await self.retrieve_new_topic(state, record_id)
-                if state.get('next_action') != "wrap_up":
-                    state = await self.new_question_generator(state)
-            elif action == "wrap_up":
-                state = await self.wrap_up(state)
-            
+
+            # LangGraph invoke (Checkpointer가 자동으로 상태 저장)
+            config = {"configurable": {"thread_id": thread_id}}
+            result_state = await self.graph.ainvoke(state, config=config)
+
             # 마지막 AI 메시지(질문) 추출
             next_question = ""
-            if state['conversation_history']:
-                for msg in reversed(state['conversation_history']):
+            if result_state['conversation_history']:
+                for msg in reversed(result_state['conversation_history']):
                     if isinstance(msg, AIMessage):
                         next_question = msg.content
                         break
-            
+
             return {
                 "next_question": next_question,
-                "updated_state": state,
-                "is_finished": state.get('interview_stage') == "WRAP_UP"
+                "updated_state": result_state,
+                "is_finished": result_state.get('interview_stage') == "WRAP_UP"
             }
-            
+
         except Exception as e:
             logger.error(f"Error processing answer: {e}")
             return {

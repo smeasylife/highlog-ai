@@ -44,7 +44,6 @@ CREATE TABLE student_records (
     s3_key VARCHAR(512) NOT NULL,         -- S3 객체 키
     status VARCHAR(20) DEFAULT 'PENDING', -- PENDING, ANALYZING, READY, FAILED
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    analyzed_at TIMESTAMP,
     CONSTRAINT fk_record_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 ```
@@ -139,7 +138,7 @@ CREATE TABLE record_chunks (
 
 ---
 
-### 7. notices (공지사항)
+### 6. notices (공지사항)
 
 서비스 운영진이 사용자에게 전달하는 공지사항입니다.
 
@@ -157,7 +156,7 @@ CREATE TABLE notices (
 
 ---
 
-### 8. faqs (자주 묻는 질문)
+### 7. faqs (자주 묻는 질문)
 
 사용자 자주 묻는 질문과 답변을 저장합니다.
 
@@ -186,10 +185,89 @@ users (1) ----< (N) student_records
                          |
                          <---- (N) question_sets (1) ----< (N) questions
 
-users (1) ----< (N) interview_sessions ---- (1) student_records
-
 notices (독립 테이블)
 faqs (독립 테이블)
+```
+
+---
+
+## 실시간 면접 데이터 흐름
+
+> **중요**: 면접 세션 상태는 **LangGraph의 PostgresSaver Checkpointer가 자동으로 저장**합니다. 모든 상태 변화는 PostgreSQL의 `checkpoints` 테이블에 저장되며, 특정 시점으로 롤백이 가능합니다.
+
+### Checkpointer 기능
+
+- **자동 저장**: 각 노드 실행 후 상태가 자동으로 checkpoint로 저장
+- **롤백 지원**: `thread_id`와 `checkpoint_id`를 통해 특정 시점의 상태로 복원 가능
+- **State 저장**: `InterviewState`의 모든 데이터가 JSONB 형태로 PostgreSQL에 저장
+
+### InterviewState 구조 (app/graphs/interview_graph.py)
+
+```python
+class InterviewState(TypedDict):
+    # 기본 설정
+    difficulty: str                    # 면접 난이도 (Easy, Normal, Hard)
+    remaining_time: int                # 남은 시간 (초 단위)
+    interview_stage: str               # [INTRO, MAIN, WRAP_UP]
+
+    # 대화 컨텍스트
+    conversation_history: List[BaseMessage]  # 대화 기록
+    current_context: List[str]         # 현재 질문/주제와 관련된 학생부 청크 리스트
+    current_sub_topic: str             # 현재 진행 중인 세부 주제
+    asked_sub_topics: List[str]        # 이미 완료된 세부 주제 리스트
+
+    # 분석 데이터 (클라이언트 메모리에 저장)
+    answer_metadata: List[Dict]        # 각 질문별 [답변시간, 평가, 개선포인트]
+    scores: Dict[str, int]             # [전공적합성, 인성, 발전가능성, 의사소통]
+
+    # 내부 상태
+    next_action: str                   # [follow_up, new_topic, wrap_up]
+    follow_up_count: int               # 현재 주제에 대한 꼬리 질문 횟수
+```
+
+### answer_metadata 실제 구조
+
+Analyzer 노드에서 생성되는 데이터 (interview_graph.py:215-223):
+
+```python
+{
+    "question": "동아리 부장으로서 갈등을 해결한 구체적인 사례는?",
+    "answer": "팀원 간 의견 차이가 있을 때 중간에서...",
+    "response_time": 45,
+    "sub_topic": "리더십",
+    "evaluation": {
+        "score": 85,                    # 0-100점
+        "grade": "좋음",                # 좋음(80+), 보통(60-79), 개선(60-)
+        "feedback": "구체적인 수치나 결과가 포함되면 좋겠습니다.",
+        "strength_tags": ["논리적 구조", "차분한 태도"],
+        "weakness_tags": ["구체적 사례 부족"]
+    },
+    "context_used": ["청크 텍스트1", "청크 텍스트2"]
+}
+```
+
+### 점수 계산 방식
+
+```python
+# 초기 점수
+scores = {
+    "전공적합성": 0,  # 성적, 동아리
+    "인성": 0,        # 리더십, 인성/태도, 봉사
+    "발전가능성": 0,  # 진로/자율, 독서
+    "의사소통": 0     # 출결
+}
+
+# 주제별 매핑 (interview_graph.py:229-243)
+topic_score_mapping = {
+    "성적": "전공적합성",
+    "동아리": "전공적합성",
+    "리더십": "인성",
+    "인성/태도": "인성",
+    "봉사": "인성",
+    "진로/자율": "발전가능성",
+    "독서": "발전가능성",
+    "출결": "의사소통"
+}
 ```
 
 ---
@@ -200,8 +278,8 @@ faqs (독립 테이블)
 
 1. **embedding 차원 변경**: `3072차원` → `768차원` (Google text-embedding-004 사용)
 2. **question_sets 테이블 추가**: 대학, 전공, 전형 정보를 별도 테이블로 분리
-3. **JSONB 도입**: `interview_logs`, `final_report`를 JSONB 타입으로 변경하여 유연한 데이터 구조 지원
-4. **인덱스 최적화**: JSONB 필드에 GIN 인덱스 추가
+3. **LangGraph Checkpointer 도입**: PostgresSaver를 통해 면접 상태 자동 저장 및 롤백 기능 구현
+4. **interview_sessions 테이블 제거**: LangGraph의 자동 상태 저장 기능으로 대체
 
 ---
 

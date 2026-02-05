@@ -26,17 +26,14 @@ class StudentRecord(Base):
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
-    track = Column(String(100))  # 인문/자연 등
-    target_school = Column(String(100))
-    target_major = Column(String(100))
-    interview_type = Column(String(100))  # 종합/교과 등
-    s3_key = Column(String(500), nullable=False)
-    status = Column(String(50), default="PENDING")  # PENDING, READY, FAILED
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
+    s3_key = Column(String(512), nullable=False)
+    status = Column(String(20), default="PENDING")  # PENDING, ANALYZING, READY, FAILED
+    created_at = Column(DateTime(timezone=True), server_default=func.now()) 
+    analyzed_at = Column(DateTime(timezone=True), nullable=True)
     user = relationship("User", back_populates="student_records")
     record_chunks = relationship("RecordChunk", back_populates="record", cascade="all, delete-orphan")
-    questions = relationship("Question", back_populates="record", cascade="all, delete-orphan")
+    question_sets = relationship("QuestionSet", back_populates="record", cascade="all, delete-orphan")
+
 
 
 class RecordChunk(Base):
@@ -44,14 +41,30 @@ class RecordChunk(Base):
     __tablename__ = "record_chunks"
 
     id = Column(BigInteger, primary_key=True, index=True)
-    record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    record_id = Column(Integer, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=False)
-    category = Column(String(50), nullable=False, index=True)  # 성적, 세특, 창체, 행특, 기타
-    embedding = Column(Vector(3072))  # pgvector Vector 타입 (gemini-embedding-001: 3072차원)
+    category = Column(String(50), nullable=False, index=True)  # 출결, 성적, 세특, 수상, 독서, 진로, 기타
+    embedding = Column(Vector(768))  # text-embedding-004: 768차원
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     record = relationship("StudentRecord", back_populates="record_chunks")
+
+
+class QuestionSet(Base):
+    """질문 생성 세트 - 대학/전공/전형 정보"""
+    __tablename__ = "question_sets"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_school = Column(String(100), nullable=False)  # 예: "한양대"
+    target_major = Column(String(100), nullable=False)  # 예: "컴퓨터학부"
+    interview_type = Column(String(50), nullable=False)  # 예: "학생부종합"
+    title = Column(String(100), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    record = relationship("StudentRecord", back_populates="question_sets")
+    questions = relationship("Question", back_populates="question_set", cascade="all, delete-orphan")
 
 
 class Question(Base):
@@ -59,26 +72,29 @@ class Question(Base):
     __tablename__ = "questions"
 
     id = Column(BigInteger, primary_key=True, index=True)
-    record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
-    
-    # 카테고리: 출결, 성적, 세특, 창체, 행특
+    set_id = Column(BigInteger, ForeignKey("question_sets.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # 카테고리: 출결, 성적, 세특, 수상, 독서, 진로, 기타
     category = Column(String(50), nullable=False, index=True)
-    
-    # 난이도: 기본, 심화, 압박
-    difficulty = Column(String(20), default='기본', nullable=False, index=True)
-    
+
+    # 난이도: BASIC, DEEP
+    difficulty = Column(String(20), default='BASIC', nullable=False, index=True)
+
     # 질문 내용
     content = Column(Text, nullable=False)
-    
+
     # 질문 목적 및 답변 포인트
     purpose = Column(String(255))
     answer_points = Column(Text)
-    
+
     # 모범 답변 및 기준
     model_answer = Column(Text)
     evaluation_criteria = Column(Text)
-    
+
     is_bookmarked = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    record = relationship("StudentRecord", back_populates="questions")
+    question_set = relationship("QuestionSet", back_populates="questions")
+
+
+

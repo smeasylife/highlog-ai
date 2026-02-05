@@ -19,10 +19,10 @@ class VectorService:
         from google import genai
         from google.genai import types
         from config import settings
-        
+
         self.client = genai.Client(api_key=settings.google_api_key)
         self.types = types
-        self.embedding_model = 'gemini-embedding-001'  # 최신 embedding 모델
+        self.embedding_model = 'text-embedding-004'  # 768차원 embedding 모델
         self.chat_model = 'gemini-2.5-flash'  # 청킹용 모델
     
     async def vectorize_pdf(
