@@ -11,14 +11,67 @@
 
 - **AI Engine**: Python 3.11+ / FastAPI / LangGraph
 - **AI Model**: Gemini 2.5 Flash (전 과정 수행)
-- **Embedding**: Google gemini-embedding-001 (3072차원)
+- **Embedding**: Google text-embedding-004 (768차원)
 - **Vector DB**: PostgreSQL 15 + pgvector (Metadata Filter: `record_id`, `category` 필수)
 
 ---
 
-## 3. Workflow Design
+## 3. Database Schema
 
-### 3.1 Phase 1: Upload & Vectorization (Trigger: Upload Button)
+> 📋 **상세 스키마**: 전체 테이블 구조, ERD, 인덱스 정보는 [`DATABASE_SCHEMA.md`](./DATABASE_SCHEMA.md) 문서를 참고하세요.
+
+### 주요 테이블 요약
+
+| 테이블 | 용도 | 주요 컬럼 |
+|--------|------|----------|
+| `users` | 사용자 인증 및 프로필 | email, password, name, role |
+| `student_records` | 생활기록부 PDF 관리 | user_id, s3_key, status |
+| `question_sets` | 질문 생성 세트 (대학/전공/전형) | record_id, target_school, target_major, interview_type |
+| `questions` | AI 생성 질문 | set_id, category, content, model_answer |
+| `record_chunks` | 벡터화된 청크 | record_id, chunk_text, category, embedding vector(768) |
+| `interview_sessions` | 실시간 면접 세션 | user_id, record_id, thread_id, interview_logs (JSONB), final_report (JSONB) |
+| `notices` | 공지사항 | title, content, is_important |
+| `faqs` | 자주 묻는 질문 | category, question, answer |
+
+### 주요 변경사항 (2025-02-05)
+
+- **embedding 차원 변경**: `3072차원` → `768차원` (Google text-embedding-004)
+- **question_sets 테이블 추가**: 대학, 전공, 전형 정보를 별도 테이블로 분리
+- **JSONB 도입**: `interview_logs`, `final_report`를 JSONB 타입으로 변경
+
+---
+
+## 4. API Specification
+
+> 🔌 **API 명세**: 핵심 API 엔드포인트, 요청/응답 형식, SSE 스트리밍 구조는 [`API.md`](./API.md) 문서를 참고하세요.
+
+### 핵심 API 요약
+
+| 엔드포인트 | 설명 | 주요 기능 |
+|------------|------|----------|
+| `POST /api/records` | 생기부 등록 | PDF OCR → 청킹 → 임베딩 → 벡터 DB 저장 (SSE 스트리밍) |
+| `POST /api/records/{recordId}/questions` | 질문 생성 | AI가 카테고리별 질문, 모범 답안 생성 (SSE 스트리밍) |
+| `POST /chat/text` | 텍스트 기반 면접 | LangGraph 기반 실시간 텍스트 면접 |
+| `POST /chat/audio` | 음성 기반 면접 | STT → LangGraph → TTS 실시간 음성 면접 |
+
+### SSE 스트리밍 응답 형식
+
+```python
+# 진행 중
+data: {"type": "processing", "progress": 30}
+
+# 완료
+data: {"type": "complete", "progress": 100}
+
+# 에러
+data: {"type": "error", "progress": 0}
+```
+
+---
+
+## 5. Workflow Design
+
+### 5.1 Phase 1: Upload & Vectorization (Trigger: Upload Button)
 
 - **Mechanism**: SSE(Server-Sent Events) 스트리밍을 통한 실시간 진행률 전송.
 - **S3 Upload**: Client → S3 직접 업로드 (Presigned URL 활용).
@@ -28,7 +81,7 @@
     - 불분명한 텍스트는 `[일부 텍스트 누락]` 처리.
     - 표 데이터(숫자, 날짜, 점수)의 절대적 정확도 유지.
 
-### 3.2 Phase 2: Bulk Question Generation (Trigger: Generate Button)
+### 5.2 Phase 2: Bulk Question Generation (Trigger: Generate Button)
 
 1. **SSE Handshake**: Spring Boot - FastAPI 간 스트림 연결.
 2. **Metadata Search**: `record_id` 기반 `record_chunks` 테이블 카테고리별 직접 조회.
@@ -37,7 +90,7 @@
 
 ---
 
-## 4. AI Interviewer Technical Specification
+## 6. AI Interviewer Technical Specification
 
 동일한 **LangGraph Logic**을 공유하되, 입출력 처리만 분리된 두 개의 엔드포인트를 운영함.
 
@@ -56,12 +109,12 @@
     3. **TTS**: 생성된 질문 텍스트를 Google Cloud TTS를 통해 고음질 음성 파일로 변환.
 - **Output**: 다음 질문 음성 파일(URL), 질문 텍스트, 업데이트된 상태(State), 실시간 분석 데이터.
 
-### 4.1 Interview Flow
+### 6.1 Interview Flow
 
 - **Trigger**: 프론트엔드의 "자기소개 부탁드립니다" 멘트 후 사용자의 **첫 답변** 시 LangGraph 구동.
 - **UI/UX**: 실시간 챗봇 형태, 타이머 정보 및 답변 소요 시간 데이터 동기화.
 
-### 4.2 State Definition
+### 6.2 State Definition
 
 ```python
 class InterviewState(TypedDict):
@@ -96,7 +149,7 @@ analyzer가 이 데이터를 넣습니다. score의 점수를 보고 분기 로�
   "context_used": ["학생부_청크_ID_123", "학생부_청크_ID_456"] // 근거 데이터 추적용
 }
 
-### 4.3 Graph Nodes & Conditional Logic
+### 6.3 Graph Nodes & Conditional Logic
 
 - **Nodes**:
     - `analyzer`: 답변 분석 후 [꼬리 질문 / 주제 전환 / 종료] 경로 결정.
@@ -109,9 +162,9 @@ analyzer가 이 데이터를 넣습니다. score의 점수를 보고 분기 로�
     - **IF [충실도 높음/주제 소진(3회 이상)]**: → `retrieve_new_topic` (주제 전환)
     - **IF [남은 시간 < 30초]**: → `wrap_up` (종료)
 
-## 5. Sub-Topic & RAG Strategy
+## 7. Sub-Topic & RAG Strategy
 
-### 5.1 하위 주제 기반 검색 전략
+### 7.1 하위 주제 기반 검색 전략
 
 | **하위 주제** | **검색 및 질문 가이드라인** |
 | --- | --- |
@@ -124,7 +177,7 @@ analyzer가 이 데이터를 넣습니다. score의 점수를 보고 분기 로�
 | **독서** | 언급된 도서가 가치관 및 탐구에 미친 영향. |
 | **봉사** | 활동의 지속성, 배운 점 및 공동체 의식 변화. |
 
-### 5.2 꼬리 질문 (Deep Dive) 로직
+### 7.2 꼬리 질문 (Deep Dive) 로직
 
 - **Context Utilization**: `current_context` 내 다중 청크를 교차 검증하여 질문 생성.
 - **Focus**: 행동의 **'판단 근거'**와 **'배운 점'**을 집요하게 캐묻는 질문 생성.
@@ -132,7 +185,7 @@ analyzer가 이 데이터를 넣습니다. score의 점수를 보고 분기 로�
 
 ---
 
-## 6. 결과 분석 및 요약 (Wrap-up)
+## 8. 결과 분석 및 요약 (Wrap-up)
 
 - **종합 평가**: 전체 답변 시간 평균 및 논리성 점수 합산.
 - **강점/약점 추출**:
@@ -140,7 +193,7 @@ analyzer가 이 데이터를 넣습니다. score의 점수를 보고 분기 로�
     - **약점**: 답변 지연 혹은 근거가 빈약했던 주제.
 - **개선 포인트**: 질문별 피드백(결론 중심 말하기, 수치 활용 등) 생성.
 
-## 7. Key Development Rules
+## 9. Key Development Rules
 
 - **Gemini Native Audio**: 별도 STT 없이 음성 파일 직접 Gemini 2.5 Flash 전달.
 - **Professional TTS**: Google Cloud TTS를 활용한 신뢰감 있는 음성 생성.
