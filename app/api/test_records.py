@@ -8,7 +8,7 @@ import asyncio
 import io
 
 from app.database import get_db
-from app.models import StudentRecord, Question
+from app.models import StudentRecord, Question, QuestionSet
 from app.services.pdf_service import pdf_service
 from app.services.vector_service import vector_service
 from app.graphs.record_analysis import question_generation_graph, QuestionGenerationState
@@ -41,15 +41,15 @@ async def upload_local_pdf(
     file: UploadFile = File(...),
     user_id: int = 1,  # 테스트용 기본 user_id
     title: str = "테스트 생기부",
-    target_school: str = "서울대학교",
-    target_major: str = "컴퓨터공학과",
-    interview_type: str = "종합전형",
     db: Session = Depends(get_db)
 ):
     """
     로컬 PDF 파일 업로드 테스트용 엔드포인트
 
     S3를 거치지 않고 직접 PDF를 업로드하여 벡터화 테스트
+
+    Note: target_school, target_major, interview_type는
+          질문 생성 시 question_sets 테이블에 저장됩니다.
     """
     try:
         # 1. PDF 파일 읽기
@@ -63,9 +63,6 @@ async def upload_local_pdf(
             user_id=user_id,  # user_id 추가
             title=title,
             s3_key=f"local/{file.filename}",  # 로컬 파일임을 표시
-            target_school=target_school,
-            target_major=target_major,
-            interview_type=interview_type,
             status="PENDING"
         )
         db.add(record)
@@ -94,7 +91,7 @@ async def local_pdf_vectorization_stream(record: StudentRecord, pdf_bytes: io.By
     """
     try:
         # 시작 이벤트 전송
-        yield create_sse_event(0, "시작")
+        yield create_sse_event(0, "PDF 업로드 완료. 벡터화를 시작합니다...")
 
         # 진행률 큐 생성
         progress_queue = asyncio.Queue()
@@ -113,7 +110,26 @@ async def local_pdf_vectorization_stream(record: StudentRecord, pdf_bytes: io.By
         while not vectorization_task.done() or not progress_queue.empty():
             try:
                 progress = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
-                yield create_sse_event(progress)
+                
+                # 진행률에 따른 메시지 생성
+                if progress < 20:
+                    message = "PDF 파일 분석 중..."
+                elif progress < 40:
+                    message = "AI로 텍스트 추출 중..."
+                elif progress < 70:
+                    message = "카테고리별 청킹 중..."
+                elif progress < 90:
+                    message = "벡터 임베딩 및 저장 중..."
+                elif progress < 100:
+                    message = "마무리 중..."
+                else:
+                    message = "완료"
+                
+                yield create_sse_event(progress, message)
+                
+                # 디버깅용 로그
+                logger.debug(f"📊 SSE Progress: {progress}% - {message}")
+                
             except asyncio.TimeoutError:
                 continue
 
@@ -293,9 +309,6 @@ async def list_test_records(db: Session = Depends(get_db)):
             {
                 "id": r.id,
                 "title": r.title,
-                "target_school": r.target_school,
-                "target_major": r.target_major,
-                "interview_type": r.interview_type,
                 "status": r.status,
                 "created_at": r.created_at
             }
@@ -343,27 +356,49 @@ async def get_record_chunks(record_id: int, db: Session = Depends(get_db)):
 async def get_record_questions(record_id: int, db: Session = Depends(get_db)):
     """
     생성된 질문 목록 조회 (테스트용)
+
+    record_id에 속한 모든 question_sets의 질문을 반환합니다.
     """
     try:
-        questions = db.query(Question).filter(
-            Question.record_id == record_id
-        ).order_by(Question.category).all()
+        from app.models import QuestionSet
 
-        result = [
-            {
-                "id": q.id,
-                "category": q.category,
-                "content": q.content,
-                "difficulty": q.difficulty,
-                "purpose": q.purpose,
-                "answer_points": q.answer_points,
-                "model_answer": q.model_answer,
-                "evaluation_criteria": q.evaluation_criteria
-            }
-            for q in questions
-        ]
+        # 해당 record의 모든 question_sets 조회
+        question_sets = db.query(QuestionSet).filter(
+            QuestionSet.record_id == record_id
+        ).all()
 
-        return {"questions": result, "total": len(result)}
+        if not question_sets:
+            return {"questions": [], "total": 0, "message": "질문 세트가 없습니다. 먼저 질문을 생성해주세요."}
+
+        # 모든 세트의 질문 조회
+        all_questions = []
+        for qset in question_sets:
+            questions = db.query(Question).filter(
+                Question.set_id == qset.id
+            ).order_by(Question.category).all()
+
+            for q in questions:
+                all_questions.append({
+                    "id": q.id,
+                    "set_id": q.set_id,
+                    "question_set_info": {
+                        "id": qset.id,
+                        "target_school": qset.target_school,
+                        "target_major": qset.target_major,
+                        "interview_type": qset.interview_type,
+                        "title": qset.title
+                    },
+                    "category": q.category,
+                    "content": q.content,
+                    "difficulty": q.difficulty,
+                    "model_answer": q.model_answer
+                })
+
+        return {
+            "questions": all_questions,
+            "total": len(all_questions),
+            "question_sets_count": len(question_sets)
+        }
 
     except Exception as e:
         logger.error(f"Error getting questions: {e}")

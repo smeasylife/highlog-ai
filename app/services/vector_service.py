@@ -66,16 +66,20 @@ class VectorService:
             batch_size = 4  # 4페이지씩 배치
             total_batches = (total_pages + batch_size - 1) // batch_size
 
-            logger.info(f"PDF split into {total_batches} batches (batch_size={batch_size}, total_pages={total_pages})")
-
+            logger.info(f"📄 PDF split into {total_batches} batches (batch_size={batch_size}, total_pages={total_pages})")
+            
             if progress_callback:
-                await progress_callback(30)
+                await progress_callback(10)
+                logger.info("📊 Progress: 10% - PDF 분석 완료")
 
             # 2. 각 배치를 Gemini로 파싱
             all_chunks = []
             failed_batches = []
 
-            logger.info("Starting Gemini AI chunking")
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("🤖 Starting Gemini AI Chunking")
+            logger.info("=" * 60)
 
             for i in range(total_batches):
                 try:
@@ -83,13 +87,15 @@ class VectorService:
                     end_page = min(start_page + batch_size, total_pages)
                     pages_in_batch = list(range(start_page, end_page))
 
+                    logger.info(f"📖 Processing batch {i+1}/{total_batches} (pages {start_page+1}-{end_page})")
+
                     chunks = await self._parse_pdf_batch_with_gemini(pdf_bytes, pages_in_batch, i, total_batches)
 
                     if chunks:
                         all_chunks.extend(chunks)
-                        logger.info(f"Batch {i+1}/{total_batches}: {len(chunks)} chunks created")
+                        logger.info(f"   ✅ Batch {i+1}/{total_batches}: {len(chunks)} chunks created")
                     else:
-                        logger.warning(f"Batch {i+1}: No chunks returned")
+                        logger.warning(f"   ⚠️  Batch {i+1}: No chunks returned")
                         failed_batches.append(i+1)
 
                     # 진행률 업데이트 (30-70%)
@@ -98,7 +104,8 @@ class VectorService:
                         await progress_callback(batch_progress)
 
                 except Exception as e:
-                    logger.error(f"Batch {i+1} parsing failed: {e}")
+                    logger.error(f"   ❌ Batch {i+1} parsing failed: {e}")
+                    logger.warning(f"   ⏭️  Skipping batch {i+1} and continuing...")
                     failed_batches.append(i+1)
 
                     # 계속 진행 (하나의 배치 실패가 전체를 망치지 않게)
@@ -107,30 +114,39 @@ class VectorService:
                         await progress_callback(batch_progress)
                     continue
 
-            # 실패한 배치가 있으면 전체 실패 처리
+            # 실패한 배치가 있어도 계속 진행 (부분 성공 허용)
             if failed_batches:
-                logger.error(f"Batch parsing failed: {failed_batches}")
-                return False, f"Batch parsing failed: {failed_batches}", 0
+                logger.warning(f"⚠️ Some batches failed: {failed_batches} - but continuing with {len(all_chunks)} chunks")
 
             if not all_chunks:
-                logger.error("No chunks generated")
-                return False, "Failed to generate chunks", 0
+                logger.error("No chunks generated from any batch")
+                return False, "Failed to generate chunks from all batches", 0
 
             # 카테고리별 통계
             category_counts = {}
             for chunk in all_chunks:
                 cat = chunk['category']
                 category_counts[cat] = category_counts.get(cat, 0) + 1
-            logger.info(f"Generated {len(all_chunks)} chunks total: {category_counts}")
+            
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info(f"📊 Generated {len(all_chunks)} chunks total")
+            for cat, count in category_counts.items():
+                logger.info(f"   {cat}: {count} chunks")
+            logger.info("=" * 60)
+            logger.info("")
 
             # 3. 각 청크를 벡터화하고 저장
             if progress_callback:
                 await progress_callback(75)
+                logger.info("📊 Progress: 75% - 벡터 임베딩 시작")
 
-            logger.info(f"Starting embedding and DB save for {len(all_chunks)} chunks")
+            logger.info(f"🔄 Starting embedding and DB save for {len(all_chunks)} chunks")
 
             saved_count = 0
-            for chunk_data in all_chunks:
+            failed_embeddings = 0
+            
+            for idx, chunk_data in enumerate(all_chunks):
                 try:
                     # 텍스트 임베딩
                     embedding = await self._embed_text(chunk_data['text'])
@@ -149,22 +165,45 @@ class VectorService:
                     # 진행률 업데이트 (75-95%)
                     if progress_callback:
                         embed_progress = 75 + int((saved_count / len(all_chunks)) * 20)
+                        if saved_count % 5 == 0:  # 5개마다 로그 출력
+                            logger.info(f"   📊 Embedded {saved_count}/{len(all_chunks)} chunks...")
                         await progress_callback(embed_progress)
 
                 except Exception as e:
-                    logger.error(f"Chunk {chunk_data['index'] + 1} processing failed: {e}")
+                    logger.error(f"   ❌ Chunk {idx+1} embedding failed: {e}")
+                    failed_embeddings += 1
                     continue
 
             db.commit()
 
-            logger.info(f"PDF vectorization completed: {saved_count} chunks saved for record {record_id}")
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("✅ PDF Vectorization Complete!")
+            logger.info("=" * 60)
+            logger.info(f"💾 Successfully saved: {saved_count} chunks")
+            
+            if failed_batches:
+                logger.warning(f"⚠️  Failed batches: {len(failed_batches)} (skipped)")
+            
+            if failed_embeddings:
+                logger.warning(f"⚠️  Failed embeddings: {failed_embeddings} (skipped)")
+            
+            logger.info("=" * 60)
+            logger.info("")
 
-            # 저장된 청크가 없으면 실패 반환
+            # 저장된 청크가 1개 이상이면 성공 (부분 성공 허용)
             if saved_count == 0:
-                logger.error("No chunks were vectorized")
-                return False, "No chunks were vectorized", 0
+                logger.error("❌ No chunks were successfully vectorized")
+                return False, "No chunks were successfully vectorized", 0
 
-            return True, f"{saved_count} chunks vectorized", saved_count
+            # 성공 메시지에 실패 정보 포함
+            success_msg = f"{saved_count} chunks successfully vectorized"
+            if failed_batches:
+                success_msg += f" ({len(failed_batches)} batches failed but skipped)"
+            if failed_embeddings:
+                success_msg += f" ({failed_embeddings} chunks failed to embed)"
+
+            return True, success_msg, saved_count
 
         except Exception as e:
             logger.error(f"PDF vectorization failed: {str(e)}")

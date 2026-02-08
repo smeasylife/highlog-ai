@@ -77,7 +77,7 @@ class Question(Base):
     # 카테고리: 출결, 성적, 세특, 수상, 독서, 진로, 기타
     category = Column(String(50), nullable=False, index=True)
 
-    # 난이도: BASIC, DEEP
+    # 난이도: 기본, 압박, 심화
     difficulty = Column(String(20), default='BASIC', nullable=False, index=True)
 
     # 질문 내용

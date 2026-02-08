@@ -46,6 +46,7 @@ class QuestionGenerationState(TypedDict):
     # 누적 값 (추가 - reducer 사용)
     processed_categories: Annotated[List[str], add]
     all_questions: Annotated[List[Dict[str, Any]], add]
+    failed_categories: Annotated[List[str], add]  # 실패한 카테고리 추적
     
     # 단일 값 (덮어쓰기)
     current_category: Optional[str]
@@ -63,14 +64,23 @@ class QuestionGenerationGraph:
     def __init__(self):
         # PostgreSQL Checkpointer 초기화
         try:
+            from langgraph.checkpoint.memory import InMemorySaver
+            
             connection_string = get_langgraph_connection_string()
-            self.checkpointer = PostgresSaver.from_conn_string(connection_string)
-            # Checkpointer 테이블 생성 (최초 1회만 필요)
-            self.checkpointer.setup()
-            logger.info("LangGraph PostgreSQL Checkpointer initialized successfully")
+            
+            # PostgresSaver는 비동기 컨텍스트 매니저이므로 진입이 필요함
+            # 간단한 InMemorySaver를 사용하거나, PostgreSQL이 필요한 경우 별도 초기화 필요
+            # 현재로서는 안정성을 위해 InMemorySaver 사용
+            self.checkpointer = InMemorySaver()
+            logger.info("LangGraph InMemory Checkpointer initialized successfully")
+            
+            # TODO: 추후 PostgreSQL 체크포인터가 필요한 경우 아래 패턴 사용
+            # async with PostgresSaver.from_conn_string(connection_string) as checkpointer:
+            #     self.checkpointer = checkpointer
         except Exception as e:
             logger.error(f"Failed to initialize checkpointer: {e}")
-            self.checkpointer = None
+            from langgraph.checkpoint.memory import InMemorySaver
+            self.checkpointer = InMemorySaver()
 
         # Google GenAI 클라이언트 초기화
         self.client = genai.Client(api_key=settings.google_api_key)
@@ -107,96 +117,135 @@ class QuestionGenerationGraph:
 
     async def initialize(self, state: QuestionGenerationState) -> QuestionGenerationState:
         """초기화"""
-        try:
-            logger.info(f"Initializing question generation for record {state['record_id']}")
+        logger.info(f"Initializing question generation for record {state['record_id']}")
 
-            state['processed_categories'] = []
-            state['all_questions'] = []
-            state['current_category'] = self.CATEGORIES[0]
-            state['progress'] = 5
-            state['status_message'] = "질문 생성을 시작합니다"
-            state['error'] = ""
+        state['processed_categories'] = []
+        state['all_questions'] = []
+        state['failed_categories'] = []
+        state['current_category'] = self.CATEGORIES[0]
+        state['progress'] = 5
+        state['status_message'] = "질문 생성을 시작합니다"
+        state['error'] = None
 
-            return state
-
-        except Exception as e:
-            logger.error(f"Error in initialize: {e}")
-            state['error'] = str(e)
-            return state
+        return state
 
     async def process_category(self, state: QuestionGenerationState) -> QuestionGenerationState:
-        """카테고리별 질문 생성"""
+        """카테고리별 질문 생성 (내부 재시도 로직, SSE에 노출되지 않음)"""
+        current_category = state['current_category']
+        max_retries = 2  # 최대 2회 재시도 (총 3회 시도)
+        
+        logger.info(f"🔄 Processing category: {current_category}")
+
         try:
-            current_category = state['current_category']
-
-            logger.info(f"Processing category: {current_category}")
-
             # 1. 벡터 DB에서 해당 카테고리 청크 검색
             relevant_chunks = await self._retrieve_relevant_chunks(
                 state['record_id'],
                 current_category
             )
 
-            # 현재 처리된 카테고리 수 계산
-            num_processed = len(state['processed_categories'])
-            
-            # 진행률 계산
-            progress = int(((num_processed + 1) / len(self.CATEGORIES)) * 90)
-            
-            # 다음 카테고리 계산
-            remaining_categories = [cat for cat in self.CATEGORIES if cat not in state['processed_categories'] + [current_category]]
-
             if not relevant_chunks:
                 # 해당 카테고리에 데이터가 없으면 스킵
-                logger.warning(f"No chunks found for category: {current_category}")
+                logger.warning(f"⚠️ No chunks found for category: {current_category}, skipping...")
+                
+                num_processed = len(state['processed_categories'])
+                progress = int(((num_processed + 1) / len(self.CATEGORIES)) * 90)
+                remaining_categories = [cat for cat in self.CATEGORIES if cat not in state['processed_categories'] + [current_category]]
                 
                 return {
                     "processed_categories": [current_category],
                     "current_category": remaining_categories[0] if remaining_categories else None,
                     "progress": progress,
-                    "status_message": f"{current_category} 영역 분석 완료..."
+                    "status_message": f"{current_category} 영역 데이터 없음, 다음 영역으로 넘어갑니다...",
+                    "error": None
                 }
             
-            # 2. Gemini로 질문 생성
-            questions = await self._generate_questions_for_category(
-                category=current_category,
-                chunks=relevant_chunks,
-                target_school=state['target_school'],
-                target_major=state['target_major'],
-                interview_type=state['interview_type']
-            )
-
-            # 3. 생성된 질문 추가 (Annotated reducer가 자동으로 병합)
-            logger.info(f"Generated {len(questions)} questions for category: {current_category}")
+            # 2. 내부 재시도 루프 (최대 3회 시도: 초기 1회 + 재시도 2회)
+            last_error = None
+            questions = []
             
-            # Annotated 방식: 새 값을 반환하면 자동으로 병합됨
+            for attempt in range(max_retries + 1):  # 0, 1, 2
+                try:
+                    logger.info(f"  📝 Attempt {attempt + 1}/{max_retries + 1} for {current_category}")
+                    
+                    # 질문 생성
+                    questions = await self._generate_questions_for_category(
+                        category=current_category,
+                        chunks=relevant_chunks,
+                        target_school=state['target_school'],
+                        target_major=state['target_major'],
+                        interview_type=state['interview_type']
+                    )
+
+                    # 질문 생성 실패 체크
+                    if not questions:
+                        raise ValueError(f"{current_category} 카테고리에 대한 질문 생성 실패 (빈 응답)")
+
+                    # ✅ 성공: 루프 종료
+                    logger.info(f"  ✅ Successfully generated {len(questions)} questions for {current_category} (attempt {attempt + 1})")
+                    break
+                    
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"  ❌ Attempt {attempt + 1} failed for {current_category}: {e}")
+                    
+                    if attempt < max_retries:
+                        # 재시도 대기 (1초)
+                        import asyncio
+                        await asyncio.sleep(1)
+                        logger.info(f"  🔄 Retrying {current_category}...")
+                    else:
+                        # 최대 재시도 초과: 에러 던짐
+                        logger.error(f"  ❌ All {max_retries + 1} attempts failed for {current_category}")
+                        raise Exception(f"{current_category} 카테고리 질문 생성 실패 (최대 {max_retries + 1}회 시도): {str(e)}")
+
+            # 3. 성공: 다음 카테고리로 이동
+            num_processed = len(state['processed_categories'])
+            progress = int(((num_processed + 1) / len(self.CATEGORIES)) * 90)
+            remaining_categories = [cat for cat in self.CATEGORIES if cat not in state['processed_categories'] + [current_category]]
+            
             return {
                 "all_questions": questions,
                 "processed_categories": [current_category],
                 "current_category": remaining_categories[0] if remaining_categories else None,
                 "progress": progress,
-                "status_message": f"{current_category} 영역 분석 완료..."
+                "status_message": f"{current_category} 영역 분석 완료...",
+                "error": None
             }
 
         except Exception as e:
-            logger.error(f"Error processing category {state.get('current_category')}: {e}")
-            return {"error": str(e)}
+            # 최대 재시도 초과: 해당 카테고리만 스킵하고 다음 카테고리로 계속
+            logger.error(f"❌ Failed to generate questions for {current_category} after 3 attempts: {e}")
+            logger.info(f"⏭️ Skipping {current_category} and continuing to next category...")
+            
+            num_processed = len(state['processed_categories'])
+            progress = int(((num_processed + 1) / len(self.CATEGORIES)) * 90)
+            remaining_categories = [cat for cat in self.CATEGORIES if cat not in state['processed_categories'] + [current_category]]
+            
+            return {
+                "processed_categories": [current_category],  # 처리된 것으로 표시
+                "failed_categories": [current_category],     # 실패 목록에 추가
+                "current_category": remaining_categories[0] if remaining_categories else None,
+                "progress": progress,
+                "status_message": f"{current_category} 질문 생성 실패로 건너뜁니다...",
+                "error": None  # 치명적 에러가 아니므로 error 필드는 None
+            }
 
     async def finalize(self, state: QuestionGenerationState) -> QuestionGenerationState:
         """마무리"""
-        try:
-            logger.info(f"Finalizing question generation. Total questions: {len(state['all_questions'])}")
+        failed_cats = state.get('failed_categories', [])
+        total_questions = len(state['all_questions'])
+        
+        if failed_cats:
+            logger.warning(f"⚠️ Failed categories: {failed_cats}")
+            state['status_message'] = f"질문 생성 완료! 총 {total_questions}개 질문 생성. {len(failed_cats)}개 카테고리({', '.join(failed_cats)}) 실패로 건너뜀."
+        else:
+            logger.info(f"✅ All categories succeeded. Total questions: {total_questions}")
+            state['status_message'] = f"질문 생성 완료! 총 {total_questions}개 질문이 생성되었습니다."
 
-            state['progress'] = 100
-            state['status_message'] = f"질문 생성 완료! 총 {len(state['all_questions'])}개 질문이 생성되었습니다."
-            state['current_category'] = None
+        state['progress'] = 100
+        state['current_category'] = None
 
-            return state
-
-        except Exception as e:
-            logger.error(f"Error in finalize: {e}")
-            state['error'] = str(e)
-            return state
+        return state
 
     async def _retrieve_relevant_chunks(
         self,
@@ -333,9 +382,11 @@ class QuestionGenerationGraph:
 
     def should_continue(self, state: QuestionGenerationState) -> str:
         """계속 진행 여부 판단"""
+        # 에러가 있으면 즉시 종료
         if state.get('error'):
             return "end"
 
+        # 남은 카테고리 확인
         remaining = [cat for cat in self.CATEGORIES if cat not in state.get('processed_categories', [])]
         if remaining:
             return "continue"

@@ -403,7 +403,7 @@ async def question_generation_stream(
             all_questions=[],
             progress=0,
             status_message="",
-            error=""
+            error=None
         )
 
         # 3. LangGraph 실행 (스트리밍)
@@ -412,8 +412,7 @@ async def question_generation_stream(
             event = SSEProgressEvent(
                 type="processing",
                 progress=state_update.get('progress', 0),
-                message=state_update.get('message', f"진행률 {state_update.get('progress', 0)}%")
-
+                message=state_update.get('status_message', f"진행률 {state_update.get('progress', 0)}%")
             )
             yield f"data: {event.model_dump_json()}\n\n"
 

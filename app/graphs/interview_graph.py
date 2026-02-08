@@ -7,7 +7,7 @@ from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from operator import add
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from langchain_checkpoint_postgres import PostgresSaver
+from langgraph.checkpoint.postgres import PostgresSaver
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
@@ -98,24 +98,18 @@ class InterviewGraph:
         # 그래프 빌드 (with checkpointer)
         self.graph = self._build_graph()
 
-    def _init_checkpointer(self) -> PostgresSaver:
-        """PostgresSaver Checkpointer 초기화"""
+    def _init_checkpointer(self):
+        """Checkpointer 초기화 (InMemorySaver 사용)"""
         try:
-            # DB 연결 문자열 구성
-            db_url = (
-                f"postgresql://{settings.db_user}:{settings.db_password}"
-                f"@{settings.db_host}:{settings.db_port}/{settings.db_name}"
-            )
-
-            # PostgresSaver 초기화 (async)
-            checkpointer = PostgresSaver.from_conn_string(db_url)
-
-            logger.info("PostgresSaver checkpointer initialized successfully")
+            from langgraph.checkpoint.memory import InMemorySaver
+            
+            # 안정성을 위해 InMemorySaver 사용
+            checkpointer = InMemorySaver()
+            logger.info("InMemorySaver checkpointer initialized successfully")
             return checkpointer
-
+            
         except Exception as e:
-            logger.error(f"Failed to initialize PostgresSaver: {e}")
-            # Checkpointer 실패 시에는 None 반환 (fallback)
+            logger.error(f"Failed to initialize checkpointer: {e}")
             return None
     
     def _build_graph(self) -> StateGraph:
