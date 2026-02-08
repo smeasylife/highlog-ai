@@ -224,11 +224,10 @@ JSON 형식으로 응답하세요."""
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
-                config=self.types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                    temperature=0.7
-                )
+                config={
+    "response_mime_type": "application/json",
+    "response_json_schema": schema,
+}
             )
             
             result = json.loads(response.text)
@@ -444,11 +443,10 @@ JSON 형식으로 응답하세요."""
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
-                config=self.types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                    temperature=0.7
-                )
+                config={
+    "response_mime_type": "application/json",
+    "response_json_schema": schema,
+}
             )
             
             result = json.loads(response.text)
@@ -523,11 +521,10 @@ JSON 형식으로 응답하세요."""
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
-                config=self.types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                    temperature=0.7
-                )
+                config={
+    "response_mime_type": "application/json",
+    "response_json_schema": schema,
+}
             )
             
             result = json.loads(response.text)

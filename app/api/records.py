@@ -9,7 +9,6 @@ import io
 
 from app.database import get_db
 from app.models import StudentRecord, Question, QuestionSet
-from app.services.pdf_service import pdf_service
 from app.services.vector_service import vector_service
 from app.graphs.record_analysis import question_generation_graph, QuestionGenerationState
 from app.schemas import CreateRecordRequest, VectorizeRequest, GenerateQuestionsRequest, SSEProgressEvent, QuestionData

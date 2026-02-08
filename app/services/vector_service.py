@@ -11,6 +11,17 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
+class RecordData(BaseModel):
+    """생활기록부 청크 데이터 모델"""
+    category: str
+    content: str
+
+
+class RecordsResponse(BaseModel):
+    """생활기록부 응답 모델"""
+    records: List[RecordData]
+
+
 class VectorService:
     """PDF 벡터화 서비스 - Gemini 기반 카테고리별 청킹 & Embedding"""
     
@@ -20,10 +31,12 @@ class VectorService:
         from google.genai import types
         from config import settings
 
-        self.client = genai.Client(api_key=settings.google_api_key)
+        self.client = genai.Client(
+            api_key=settings.google_api_key
+        )
         self.types = types
-        self.embedding_model = 'text-embedding-004'  # 768차원 embedding 모델
-        self.chat_model = 'gemini-2.5-flash'  # 청킹용 모델
+        self.embedding_model = 'gemini-embedding-001'  # 768차원 embedding 모델
+        self.chat_model = 'gemini-2.5-flash'  # 청킹용 모델  # 청킹용 모델
     
     async def vectorize_pdf(
         self,
@@ -66,20 +79,16 @@ class VectorService:
             batch_size = 4  # 4페이지씩 배치
             total_batches = (total_pages + batch_size - 1) // batch_size
 
-            logger.info(f"📄 PDF split into {total_batches} batches (batch_size={batch_size}, total_pages={total_pages})")
+            logger.info(f"📄 {total_pages} pages → {total_batches} batches ({batch_size} pages/batch)")
             
             if progress_callback:
                 await progress_callback(10)
-                logger.info("📊 Progress: 10% - PDF 분석 완료")
 
             # 2. 각 배치를 Gemini로 파싱
             all_chunks = []
             failed_batches = []
 
-            logger.info("")
-            logger.info("=" * 60)
-            logger.info("🤖 Starting Gemini AI Chunking")
-            logger.info("=" * 60)
+            logger.info("🤖 AI Chunking...")
 
             for i in range(total_batches):
                 try:
@@ -87,15 +96,13 @@ class VectorService:
                     end_page = min(start_page + batch_size, total_pages)
                     pages_in_batch = list(range(start_page, end_page))
 
-                    logger.info(f"📖 Processing batch {i+1}/{total_batches} (pages {start_page+1}-{end_page})")
-
                     chunks = await self._parse_pdf_batch_with_gemini(pdf_bytes, pages_in_batch, i, total_batches)
 
                     if chunks:
                         all_chunks.extend(chunks)
-                        logger.info(f"   ✅ Batch {i+1}/{total_batches}: {len(chunks)} chunks created")
+                        logger.info(f"📦 [{i+1}/{total_batches}] {len(chunks)} chunks (pages {start_page+1}-{end_page})")
                     else:
-                        logger.warning(f"   ⚠️  Batch {i+1}: No chunks returned")
+                        logger.warning(f"⚠️  [{i+1}/{total_batches}] No chunks (pages {start_page+1}-{end_page})")
                         failed_batches.append(i+1)
 
                     # 진행률 업데이트 (30-70%)
@@ -104,8 +111,7 @@ class VectorService:
                         await progress_callback(batch_progress)
 
                 except Exception as e:
-                    logger.error(f"   ❌ Batch {i+1} parsing failed: {e}")
-                    logger.warning(f"   ⏭️  Skipping batch {i+1} and continuing...")
+                    logger.warning(f"⚠️  [{i+1}/{total_batches}] Failed: {str(e)[:80]}... - Skipping")
                     failed_batches.append(i+1)
 
                     # 계속 진행 (하나의 배치 실패가 전체를 망치지 않게)
@@ -128,20 +134,15 @@ class VectorService:
                 cat = chunk['category']
                 category_counts[cat] = category_counts.get(cat, 0) + 1
             
-            logger.info("")
-            logger.info("=" * 60)
-            logger.info(f"📊 Generated {len(all_chunks)} chunks total")
-            for cat, count in category_counts.items():
-                logger.info(f"   {cat}: {count} chunks")
-            logger.info("=" * 60)
-            logger.info("")
+            # 카테고리 요약 한 줄로
+            cat_summary = ", ".join([f"{cat}:{count}" for cat, count in sorted(category_counts.items())])
+            logger.info(f"📊 {len(all_chunks)} chunks ({cat_summary})")
 
             # 3. 각 청크를 벡터화하고 저장
             if progress_callback:
                 await progress_callback(75)
-                logger.info("📊 Progress: 75% - 벡터 임베딩 시작")
 
-            logger.info(f"🔄 Starting embedding and DB save for {len(all_chunks)} chunks")
+            logger.info(f"🔄 Embedding {len(all_chunks)} chunks...")
 
             saved_count = 0
             failed_embeddings = 0
@@ -165,31 +166,23 @@ class VectorService:
                     # 진행률 업데이트 (75-95%)
                     if progress_callback:
                         embed_progress = 75 + int((saved_count / len(all_chunks)) * 20)
-                        if saved_count % 5 == 0:  # 5개마다 로그 출력
-                            logger.info(f"   📊 Embedded {saved_count}/{len(all_chunks)} chunks...")
                         await progress_callback(embed_progress)
 
                 except Exception as e:
-                    logger.error(f"   ❌ Chunk {idx+1} embedding failed: {e}")
+                    logger.debug(f"   ❌ Chunk {idx+1} failed: {str(e)[:50]}")
                     failed_embeddings += 1
                     continue
 
             db.commit()
 
-            logger.info("")
-            logger.info("=" * 60)
-            logger.info("✅ PDF Vectorization Complete!")
-            logger.info("=" * 60)
-            logger.info(f"💾 Successfully saved: {saved_count} chunks")
-            
+            # 최종 요약 한 줄로
+            result_parts = [f"✅ {saved_count} saved"]
             if failed_batches:
-                logger.warning(f"⚠️  Failed batches: {len(failed_batches)} (skipped)")
-            
+                result_parts.append(f"{len(failed_batches)} batches failed")
             if failed_embeddings:
-                logger.warning(f"⚠️  Failed embeddings: {failed_embeddings} (skipped)")
+                result_parts.append(f"{failed_embeddings} embeddings failed")
             
-            logger.info("=" * 60)
-            logger.info("")
+            logger.info("📊 " + ", ".join(result_parts))
 
             # 저장된 청크가 1개 이상이면 성공 (부분 성공 허용)
             if saved_count == 0:
@@ -310,34 +303,21 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             
             doc.close()
 
-            # Pydantic 스키마 정의 (Structured Output)
-            class Record(BaseModel):
-                category: str
-                content: str
-
-            class ResponseList(BaseModel):
-                records: list[Record]
-
-            # Gemini 2.5 Flash에 요청 전송 (Structured Output으로 강제)
+            # Gemini 2.5 Flash에 요청 전송 (JSON 형식 응답 강제)
             response = self.client.models.generate_content(
                 model=self.chat_model,
                 contents=[prompt] + pdf_parts,
                 config={
                     "response_mime_type": "application/json",
-                    "response_json_schema": ResponseList.model_json_schema(),
-                    "temperature": 0.7  # 중간 temperature로 반복 방지 + 창의성 유지
+                    "response_json_schema": RecordsResponse.model_json_schema(),
                 }
             )
             
             # 응답 텍스트 추출 및 JSON 파싱
             response_text = response.text
-            logger.info(f"Gemini response received: {len(response_text)} characters")
             
             result = json.loads(response_text)
-            
             records = result.get('records', [])
-            logger.info(f"Extracted {len(records)} chunks from batch {batch_index + 1}")
-            
             
             # RecordChunk 형식으로 변환
             chunks = []
@@ -351,93 +331,13 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             return chunks
             
         except json.JSONDecodeError as e:
-            logger.error(f"JSON parsing failed: {e}, response length: {len(response_text)}")
+            logger.warning(f"⚠️  JSON parsing failed: {str(e)[:50]}")
             raise
 
         except Exception as e:
-            logger.error(f"Gemini processing error: {e}")
+            logger.warning(f"⚠️  Gemini error: {str(e)}")
             raise
 
-            # Gemini 2.5 Flash에 요청 전송 (Structured Output으로 강제)
-            logger.info(f"   🚀 Gemini API 요청 전송 중... (이 부분에서 시간 소요될 수 있음)")
-            response = self.client.models.generate_content(
-                model=self.chat_model,
-                contents=[prompt] + image_parts,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_json_schema": ResponseList.model_json_schema(),
-                    "temperature": 0.7  # 중간 temperature로 반복 방지 + 창의성 유지
-                }
-            )
-            logger.info(f"   ✅ Gemini API 응답 수신 완료")
-            
-            # 응답 텍스트 추출 및 JSON 파싱
-            logger.debug(f"   📝 응답 텍스트 추출 중...")
-            response_text = response.text
-            logger.debug(f"   ✅ 응답 텍스트 추출 완료")
-
-            # 디버깅용 응답 요약 로그
-            logger.info(f"   ✅ Gemini 응답 수신: {len(response_text)}자")
-            logger.debug(f"   전체 응답:\n{response_text}")
-            
-            result = json.loads(response_text)
-            
-            records = result.get('records', [])
-            logger.info(f"Extracted {len(records)} chunks from batch {batch_index + 1}")
-            
-            
-            # RecordChunk 형식으로 변환
-            chunks = []
-            for i, record in enumerate(records):
-                chunks.append({
-                    'index': i,
-                    'text': record['content'],
-                    'category': record['category']
-                })
-            
-            return chunks
-            
-        except json.JSONDecodeError as e:
-            logger.error("")
-            logger.error("❌ JSON 파싱 실패")
-            logger.error(f"   에러: {e}")
-            logger.error(f"   응답 길이: {len(response_text)}자")
-            logger.error(f"   응답 미리보기: {response_text[:300]}...")
-            logger.error("=" * 60)
-
-            # JSON이 불완전한 경우 복구 시도
-            try:
-                # 마지막 ]} 로 끝나지 않으면 추가
-                if not response_text.rstrip().endswith("}]}"):
-                    logger.warning("JSON appears incomplete, attempting to fix...")
-
-                    # 마지막 완전한 레코드 찾기 시도
-                    last_record_end = response_text.rfind("}")
-                    if last_record_end > 0:
-                        fixed_json = response_text[:last_record_end+1] + "\n  ]\n}"
-                        logger.info(f"Attempting to parse fixed JSON (length: {len(fixed_json)})")
-
-                        result = json.loads(fixed_json)
-                        records = result.get('records', [])
-
-                        if records:
-                            logger.info(f"Successfully recovered {len(records)} records from incomplete JSON")
-                            chunks = []
-                            for i, record in enumerate(records):
-                                chunks.append({
-                                    'index': i,
-                                    'text': record['content'],
-                                    'category': record['category']
-                                })
-                            return chunks
-            except Exception as fix_error:
-                logger.debug(f"   JSON 복구 시도 실패: {fix_error}")
-
-            raise
-        except Exception as e:
-            logger.error(f"Gemini processing error: {e}")
-            raise
-    
     def _pil_image_to_part(self, image):
         """PIL 이미지를 Gemini에 전송 가능한 Part로 변환"""
         import io
@@ -455,11 +355,14 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
         )
     
     async def _embed_text(self, text: str) -> List[float]:
-        """텍스트를 벡터로 임베딩"""
+        """텍스트를 벡터로 임베딩 (768차원)"""
         try:
             result = self.client.models.embed_content(
                 model=self.embedding_model,
-                contents=text
+                contents=text,
+                config=self.types.EmbedContentConfig(
+                    output_dimensionality=768
+                )
             )
             return result.embeddings[0].values
         except Exception as e:

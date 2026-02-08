@@ -68,9 +68,9 @@ class AudioService:
             response = self.genai_client.models.generate_content(
                 model=self.stt_model,
                 contents=[prompt, audio_part],
-                config=self.types.GenerateContentConfig(
-                    temperature=0.0  # 정확한 변환을 위해 temperature 0
-                )
+                config={
+                    "temperature": 0.0
+                }
             )
             
             text = response.text.strip()

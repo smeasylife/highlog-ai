@@ -2,11 +2,9 @@ from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from operator import add
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.postgres import PostgresSaver
 from google import genai
 from google.genai import types
 from config import settings
-from app.database import get_langgraph_connection_string
 import logging
 import json
 from datetime import datetime
@@ -62,26 +60,6 @@ class QuestionGenerationGraph:
     CATEGORIES = ["성적", "세특", "창체", "행특", "기타"]
 
     def __init__(self):
-        # PostgreSQL Checkpointer 초기화
-        try:
-            from langgraph.checkpoint.memory import InMemorySaver
-            
-            connection_string = get_langgraph_connection_string()
-            
-            # PostgresSaver는 비동기 컨텍스트 매니저이므로 진입이 필요함
-            # 간단한 InMemorySaver를 사용하거나, PostgreSQL이 필요한 경우 별도 초기화 필요
-            # 현재로서는 안정성을 위해 InMemorySaver 사용
-            self.checkpointer = InMemorySaver()
-            logger.info("LangGraph InMemory Checkpointer initialized successfully")
-            
-            # TODO: 추후 PostgreSQL 체크포인터가 필요한 경우 아래 패턴 사용
-            # async with PostgresSaver.from_conn_string(connection_string) as checkpointer:
-            #     self.checkpointer = checkpointer
-        except Exception as e:
-            logger.error(f"Failed to initialize checkpointer: {e}")
-            from langgraph.checkpoint.memory import InMemorySaver
-            self.checkpointer = InMemorySaver()
-
         # Google GenAI 클라이언트 초기화
         self.client = genai.Client(api_key=settings.google_api_key)
         self.model = "gemini-2.5-flash-lite"
@@ -112,8 +90,8 @@ class QuestionGenerationGraph:
         )
         workflow.add_edge("finalize", END)
 
-        # Checkpointer와 함께 컴파일
-        return workflow.compile(checkpointer=self.checkpointer)
+        # 컴파일
+        return workflow.compile()
 
     async def initialize(self, state: QuestionGenerationState) -> QuestionGenerationState:
         """초기화"""
@@ -362,11 +340,10 @@ class QuestionGenerationGraph:
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
-                config=self.types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                    temperature=0.7
-                )
+                config={
+                    "response_mime_type": "application/json",
+                    "response_json_schema": schema,
+                }
             )
 
             # JSON 파싱
