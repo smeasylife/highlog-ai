@@ -550,6 +550,94 @@ JSON 형식으로 응답하세요."""
             state['interview_stage'] = "WRAP_UP"
             return state
     
+
+    async def initialize_interview(
+        self,
+        record_id: int,
+        difficulty: str,
+        first_answer: str,
+        response_time: int,
+        thread_id: str
+    ) -> Dict[str, Any]:
+        """
+        면접 초기화 (첫 답변 처리)
+
+        Args:
+            record_id: 생기부 ID
+            difficulty: 난이도 (Easy, Normal, Hard)
+            first_answer: 첫 답변 (자기소개)
+            response_time: 답변 소요 시간
+            thread_id: LangGraph thread ID
+
+        Returns:
+            Dict with next_question, updated_state, is_finished
+        """
+        try:
+            logger.info(f"Initializing interview for record {record_id}, difficulty: {difficulty}")
+
+            # 초기 상태 생성
+            initial_state: InterviewState = {
+                'difficulty': difficulty,
+                'remaining_time': 600,  # 10분
+                'interview_stage': 'INTRO',
+                'conversation_history': [
+                    AIMessage(content="자기소개 부탁드립니다.")
+                ],
+                'current_context': [],
+                'current_sub_topic': '',
+                'asked_sub_topics': [],
+                'answer_metadata': [],
+                'scores': {
+                    "전공적합성": 0,
+                    "인성": 0,
+                    "발전가능성": 0,
+                    "의사소통": 0
+                },
+                'next_action': '',
+                'follow_up_count': 0,
+                'current_user_answer': first_answer,
+                'current_response_time': response_time,
+                'record_id': record_id
+            }
+
+            # process_answer 재사용
+            return await self.process_answer(
+                state=initial_state,
+                user_answer=first_answer,
+                response_time=response_time,
+                record_id=record_id,
+                thread_id=thread_id
+            )
+
+        except Exception as e:
+            logger.error(f"Error initializing interview: {e}")
+            raise
+
+    async def get_state(self, thread_id: str) -> InterviewState:
+        """
+        thread_id로 현재 상태 조회
+
+        Args:
+            thread_id: LangGraph thread ID
+
+        Returns:
+            현재 InterviewState
+        """
+        try:
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Checkpointer에서 상태 조회
+            state_snapshot = await self.checkpointer.aget(config=config)
+            
+            if state_snapshot is None:
+                raise ValueError(f"No state found for thread_id: {thread_id}")
+            
+            return state_snapshot.values
+            
+        except Exception as e:
+            logger.error(f"Error getting state for thread_id {thread_id}: {e}")
+            raise
+
     async def process_answer(
         self,
         state: InterviewState,
@@ -590,7 +678,7 @@ JSON 형식으로 응답하세요."""
             # LangGraph invoke (Checkpointer가 자동으로 상태 저장)
             config = {"configurable": {"thread_id": thread_id}}
             result_state = await self.graph.ainvoke(state, config=config)
-
+            
             # 마지막 AI 메시지(질문) 추출
             next_question = ""
             if result_state['conversation_history']:

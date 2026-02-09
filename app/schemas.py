@@ -59,49 +59,26 @@ class QuestionGenerationInput(BaseModel):
 
 # ========== Interview Schemas ==========
 
-class InterviewStateInput(BaseModel):
-    """면접 상태 입력"""
-    difficulty: str = Field("Normal", description="면접 난이도 (Easy, Normal, Hard)")
-    remaining_time: int = Field(600, description="남은 시간 (초 단위, 기본 10분)")
-    interview_stage: str = Field("INTRO", description="면접 단계 (INTRO, MAIN, WRAP_UP)")
-    conversation_history: List[Dict] = Field(default_factory=list, description="대화 기록")
-    current_context: List[str] = Field(default_factory=list, description="현재 질문과 관련된 학생부 청크 리스트")
-    current_sub_topic: str = Field("", description="현재 진행 중인 세부 주제")
-    asked_sub_topics: List[str] = Field(default_factory=list, description="이미 완료된 세부 주제 리스트")
-    answer_metadata: List[Dict] = Field(default_factory=list, description="답변 메타데이터 리스트")
-    scores: Dict[str, int] = Field(
-        default_factory=lambda: {
-            "전공적합성": 0,
-            "인성": 0,
-            "발전가능성": 0,
-            "의사소통": 0
-        },
-        description="평가 점수"
-    )
-
-
-class TextChatRequest(BaseModel):
-    """텍스트 기반 면접 요청"""
+class InitializeInterviewRequest(BaseModel):
+    """면접 초기화 요청"""
     record_id: int = Field(..., description="생기부 ID")
+    difficulty: str = Field("Normal", description="면접 난이도 (Easy, Normal, Hard)")
+    first_answer: str = Field(..., description="첫 답변 (자기소개)")
+    response_time: int = Field(..., description="첫 답변 소요 시간 (초)")
+
+
+class SimpleChatRequest(BaseModel):
+    """간소화된 채팅 요청"""
     answer: str = Field(..., description="사용자 답변")
     response_time: int = Field(..., description="답변 소요 시간 (초)")
-    state: InterviewStateInput = Field(..., description="현재 면접 상태")
-    thread_id: str = Field(..., description="LangGraph thread ID (Checkpointer용)")
-
-
-class AudioChatRequest(BaseModel):
-    """오디오 기반 면접 요청 (multipart/form-data용 필드 정의) - 참고용"""
-    record_id: int
-    response_time: int
-    state_json: str  # JSON 직렬화된 InterviewStateInput
 
 
 class InterviewChatResponse(BaseModel):
-    """면접 챗봇 응답"""
+    """면접 챗봇 응답 (간소화)"""
     next_question: str = Field(..., description="다음 질문 텍스트")
-    updated_state: InterviewStateInput = Field(..., description="업데이트된 상태")
     analysis: Optional[Dict] = Field(None, description="실시간 분석 데이터")
     is_finished: bool = Field(False, description="면접 종료 여부")
+    thread_id: Optional[str] = Field(None, description="LangGraph thread ID (초기화 시 반환됨)")
 
 
 class AudioInterviewResponse(InterviewChatResponse):
