@@ -12,6 +12,7 @@ from app.models import StudentRecord, Question, QuestionSet
 from app.services.vector_service import vector_service
 from app.graphs.record_analysis import question_generation_graph, QuestionGenerationState
 from app.schemas import CreateRecordRequest, VectorizeRequest, GenerateQuestionsRequest, SSEProgressEvent, QuestionData
+from app.core.dependencies import get_current_user, CurrentUser
 
 import logging
 
@@ -25,9 +26,10 @@ async def send_progress(progress: int, queue: asyncio.Queue):
     await queue.put(progress)
 
 
-@router.post("/api/records")
+@router.post("/")
 async def create_record(
     request: CreateRecordRequest,
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -66,6 +68,7 @@ async def create_record(
 @router.post("/{record_id}/vectorize")
 async def vectorize_record(
     record_id: int,
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -470,6 +473,7 @@ async def question_generation_stream(
 async def generate_questions(
     record_id: int,
     request: GenerateQuestionsRequest,
+    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """

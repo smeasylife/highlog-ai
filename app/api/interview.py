@@ -21,6 +21,7 @@ from app.schemas import (
     AudioInterviewResponse
 )
 from app.graphs.interview_graph import interview_graph
+from app.core.dependencies import get_current_user, CurrentUser
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,10 @@ router = APIRouter()
 # ==================== 면접 초기화 ====================
 
 @router.post("/initialize", response_model=InterviewChatResponse)
-async def initialize_interview(request: InitializeInterviewRequest):
+async def initialize_interview(
+    request: InitializeInterviewRequest,
+    current_user: CurrentUser = Depends(get_current_user)
+):
     """
     면접 초기화 및 첫 답변 처리
 
@@ -90,7 +94,8 @@ async def initialize_interview(request: InitializeInterviewRequest):
 @router.post("/chat/text/{thread_id}", response_model=InterviewChatResponse)
 async def chat_text(
     thread_id: str,
-    request: SimpleChatRequest
+    request: SimpleChatRequest,
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """
     텍스트 기반 실시간 면접
@@ -141,7 +146,8 @@ async def chat_text(
 async def chat_audio(
     thread_id: str,
     audio: UploadFile = File(...),
-    response_time: int = Form(...)
+    response_time: int = Form(...),
+    current_user: CurrentUser = Depends(get_current_user)
 ):
     """
     오디오 기반 실시간 면접

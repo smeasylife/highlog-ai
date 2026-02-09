@@ -12,8 +12,10 @@ from app.models import StudentRecord, Question, QuestionSet
 from app.services.vector_service import vector_service
 from app.graphs.record_analysis import question_generation_graph, QuestionGenerationState
 from app.schemas import SSEProgressEvent, GenerateQuestionsRequest
+from app.schemas import InitializeInterviewRequest, SimpleChatRequest, InterviewChatResponse
 
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -402,4 +404,124 @@ async def get_record_questions(record_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error getting questions: {e}")
         raise HTTPException(status_code=500, detail="질문 조회 중 오류가 발생했습니다.")
+
+
+# ==================== 면접 테스트용 엔드포인트 (인증 없음) ====================
+
+@router.post("/interview/initialize", response_model=InterviewChatResponse)
+async def test_initialize_interview(request: InitializeInterviewRequest):
+    """
+    면접 초기화 테스트용 엔드포인트 (JWT 인증 없음)
+
+    interview.py의 initialize_interview와 동일한 로직을 사용합니다.
+    """
+    try:
+        from app.graphs.interview_graph import interview_graph
+
+        logger.info(f"[TEST] Initializing interview for record {request.record_id}")
+
+        # 고유 thread_id 생성
+        thread_id = f"test_interview_{request.record_id}_{uuid.uuid4().hex[:8]}"
+        logger.info(f"[TEST] Generated thread_id: {thread_id}")
+
+        # InterviewGraph 초기화 처리
+        result = await interview_graph.initialize_interview(
+            record_id=request.record_id,
+            difficulty=request.difficulty,
+            first_answer=request.first_answer,
+            response_time=request.response_time,
+            thread_id=thread_id
+        )
+
+        # 실시간 분석 데이터 추출
+        analysis = None
+        if result['updated_state'].get('answer_metadata'):
+            last_metadata = result['updated_state']['answer_metadata'][-1]
+            analysis = last_metadata.get('evaluation')
+
+        return InterviewChatResponse(
+            next_question=result['next_question'],
+            analysis=analysis,
+            is_finished=result['is_finished'],
+            thread_id=thread_id
+        )
+
+    except Exception as e:
+        logger.error(f"[TEST] Error in initialize_interview: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/interview/chat/text/{thread_id}", response_model=InterviewChatResponse)
+async def test_chat_text(
+    thread_id: str,
+    request: SimpleChatRequest
+):
+    """
+    텍스트 기반 면접 테스트용 엔드포인트 (JWT 인증 없음)
+
+    interview.py의 chat_text와 동일한 로직을 사용합니다.
+    """
+    try:
+        from app.graphs.interview_graph import interview_graph
+        from typing import Dict, Any
+
+        logger.info(f"[TEST] Text chat request for thread_id: {thread_id}")
+
+        # Checkpointer에서 상태 조회하여 처리
+        result = await _test_process_chat_with_checkpoint(
+            user_answer=request.answer,
+            response_time=request.response_time,
+            thread_id=thread_id
+        )
+
+        # 실시간 분석 데이터 추출
+        analysis = None
+        if result['updated_state'].get('answer_metadata'):
+            last_metadata = result['updated_state']['answer_metadata'][-1]
+            analysis = last_metadata.get('evaluation')
+
+        return InterviewChatResponse(
+            next_question=result['next_question'],
+            analysis=analysis,
+            is_finished=result['is_finished']
+        )
+
+    except Exception as e:
+        logger.error(f"[TEST] Error in chat_text: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _test_process_chat_with_checkpoint(
+    user_answer: str,
+    response_time: int,
+    thread_id: str
+) -> Dict[str, Any]:
+    """
+    Checkpointer에서 상태를 조회하여 답변 처리 (테스트용)
+
+    interview.py의 _process_chat_with_checkpoint와 동일한 로직을 사용합니다.
+    """
+    try:
+        from app.graphs.interview_graph import interview_graph
+
+        # 1. Checkpointer에서 현재 상태 조회
+        current_state = await interview_graph.get_state(thread_id)
+
+        # 2. 상태에서 record_id 추출
+        record_id = current_state.get('record_id')
+
+        # 3. InterviewGraph 처리
+        result = await interview_graph.process_answer(
+            state=current_state,
+            user_answer=user_answer,
+            response_time=response_time,
+            record_id=record_id,
+            thread_id=thread_id
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"[TEST] Error processing chat with checkpoint: {e}")
+        raise
 
