@@ -97,4 +97,65 @@ class Question(Base):
     question_set = relationship("QuestionSet", back_populates="questions")
 
 
+class InterviewSession(Base):
+    """면접 세션 정보 - user_id와 thread_id 매핑"""
+    __tablename__ = "interview_sessions"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # LangGraph thread ID (unique)
+    thread_id = Column(String(255), unique=True, nullable=False, index=True)
+    
+    # 면접 설정
+    difficulty = Column(String(20), default="Normal")  # Easy, Normal, Hard
+    
+    # 세션 상태
+    status = Column(String(20), default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, ABANDONED
+    
+    # 시간 정보
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # 통계 정보
+    avg_response_time = Column(Integer, nullable=True)  # 초 단위
+    total_questions = Column(Integer, default=0)
+    total_duration = Column(Integer, nullable=True)  # 전체 소요 시간 (초)
+    
+    # 최종 결과
+    final_report = Column(JSON, nullable=True)
+    
+    # 관계
+    user = relationship("User")
+    record = relationship("StudentRecord")
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # LangGraph thread ID (unique)
+    thread_id = Column(String(255), unique=True, nullable=False, index=True)
+    
+    # 면접 설정
+    difficulty = Column(String(20), default="Normal")  # Easy, Normal, Hard
+    
+    # 세션 상태
+    status = Column(String(20), default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, ABANDONED
+    
+    # 시간 정보
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # 통계 정보
+    avg_response_time = Column(Integer, nullable=True)  # 초 단위
+    total_questions = Column(Integer, default=0)
+    total_duration = Column(Integer, nullable=True)  # 전체 소요 시간 (초)
+    
+    # 최종 결과
+    final_report = Column(JSON, nullable=True)  # 요약, 강점, 약점, 개선포인트
+    
+    # 관계
+    user = relationship("User")
+    record = relationship("StudentRecord")
+
 

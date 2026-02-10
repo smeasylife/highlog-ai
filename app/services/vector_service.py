@@ -394,65 +394,53 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
         self,
         record_id: int,
         topic: str
-    ) -> List[Dict]:
+    ) -> List[str]:
         """
-        주제에 따라 관련 청크 검색
+        주제에 따라 관련 청크를 pgvector 유사도 검색으로 찾기
         
         Args:
             record_id: 생기부 ID
             topic: 하위 주제 (출결, 성적, 동아리, 리더십, 인성/태도, 진로/자율, 독서, 봉사)
         
         Returns:
-            관련 청크 리스트
+            관련 청크 텍스트 리스트 (유사도 순 상위 5개)
         """
         try:
-            from app.database import get_db
-            from app.models import RecordChunk
+            import asyncpg
             
-            # DB 세션 생성
-            db_generator = get_db()
-            db = next(db_generator)
+            # 1. 주제를 embedding으로 변환
+            query_embedding = await self._embed_text(topic)
+            
+            # 2. PostgreSQL 연결
+            from config import settings
+            conn = await asyncpg.connect(settings.database_url)
             
             try:
-                # 주제별 카테고리 매핑
-                topic_category_map = {
-                    "출결": "기타",
-                    "성적": "성적",
-                    "동아리": "창체",
-                    "리더십": "행특",
-                    "인성/태도": "행특",
-                    "진로/자율": "세특",
-                    "독서": "세특",
-                    "봉사": "창체"
-                }
+                # 3. pgvector 코사인 유사도 검색
+                # <=> 연산자: 코사인 거리 (작을수록 유사)
+                query = """
+                    SELECT chunk_text
+                    FROM record_chunks
+                    WHERE record_id = $1
+                    ORDER BY embedding <=> $2
+                    LIMIT 5
+                """
                 
-                category = topic_category_map.get(topic, "기타")
+                rows = await conn.fetch(query, record_id, query_embedding)
                 
-                # 해당 카테고리의 청크 조회
-                chunks = db.query(RecordChunk).filter(
-                    RecordChunk.record_id == record_id,
-                    RecordChunk.category == category
-                ).order_by(RecordChunk.chunk_index).all()
+                # 4. 텍스트만 추출
+                result = [row['chunk_text'] for row in rows]
                 
-                # 딕셔너리 형태로 변환
-                result = [
-                    {
-                        "text": chunk.chunk_text,
-                        "category": chunk.category,
-                        "chunk_index": chunk.chunk_index
-                    }
-                    for chunk in chunks
-                ]
-                
-                logger.info(f"Retrieved {len(result)} chunks for topic {topic} (category: {category})")
+                logger.info(f"Retrieved {len(result)} chunks for topic '{topic}' using vector similarity")
                 return result
                 
             finally:
-                db.close()
+                await conn.close()
                 
         except Exception as e:
             logger.error(f"Error searching chunks for topic {topic}: {e}")
             return []
+
 
 
 vector_service = VectorService()

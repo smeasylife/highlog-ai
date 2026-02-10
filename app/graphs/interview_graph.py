@@ -35,9 +35,8 @@ class InterviewState(TypedDict):
     current_sub_topic: str             # 현재 진행 중인 세부 주제
     asked_sub_topics: List[str]        # 이미 완료된 세부 주제 리스트
 
-    # 분석 데이터
-    answer_metadata: List[Dict]        # 각 질문별 [답변시간, 평가, 개선포인트]
-    scores: Dict[str, int]             # [전공적합성, 인성, 발전가능성, 의사소통]
+    # 답변 기록 (나중에 분석 API에서 사용)
+    answer_log: List[Dict]             # [{question, answer, response_time, timestamp}]
 
     # 내부 상태
     next_action: str                   # [follow_up, new_topic, wrap_up]
@@ -51,20 +50,10 @@ class InterviewState(TypedDict):
 
 # ==================== Pydantic 모델 ====================
 
-class AnswerEvaluation(BaseModel):
-    """답변 평가 모델"""
-    score: int = Field(description="평가 점수 (0-100)")
-    grade: str = Field(description="등급 (좋음, 보통, 개선)")
-    feedback: str = Field(description="피드백 내용")
-    strength_tags: List[str] = Field(default_factory=list, description="강점 태그")
-    weakness_tags: List[str] = Field(default_factory=list, description="약점 태그")
-
-
 class AnalyzerDecision(BaseModel):
-    """분석기 결정 모델"""
+    """분석기 결정 모델 - 꼬리질문 여부만 판단"""
     action: str = Field(description="다음 액션 (follow_up, new_topic, wrap_up)")
     reasoning: str = Field(description="결정 근거")
-    evaluation: AnswerEvaluation = Field(description="답변 평가")
 
 
 class GeneratedQuestion(BaseModel):
@@ -99,13 +88,25 @@ class InterviewGraph:
         self.graph = self._build_graph()
 
     def _init_checkpointer(self):
-        """Checkpointer 초기화 (InMemorySaver 사용)"""
+        """Checkpointer 초기화 (PostgresSaver 사용)"""
         try:
-            from langgraph.checkpoint.memory import InMemorySaver
+            from langgraph.checkpoint.postgres import PostgresSaver
+            from app.database import get_langgraph_connection_string
             
-            # 안정성을 위해 InMemorySaver 사용
-            checkpointer = InMemorySaver()
-            logger.info("InMemorySaver checkpointer initialized successfully")
+            # PostgreSQL Checkpointer 사용
+            conn_string = get_langgraph_connection_string()
+            checkpointer = PostgresSaver.from_conn_string(conn_string)
+            
+            # 테이블 생성 (이미 있으면 무시)
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(checkpointer.setup())
+            except RuntimeError:
+                # 이벤트 루프가 없으면 새로 생성
+                asyncio.run(checkpointer.setup())
+            
+            logger.info("PostgresSaver checkpointer initialized successfully")
             return checkpointer
             
         except Exception as e:
@@ -146,8 +147,7 @@ class InterviewGraph:
         # Checkpointer와 함께 컴파일
         return workflow.compile(checkpointer=self.checkpointer)
     
-    async def analyzer(self, state: InterviewState) -> InterviewState:
-        """답변 분석 및 다음 액션 결정"""
+    """답변 분석 및 다음 액션 결정 (꼬리질문 여부만 판단)"""
         try:
             logger.info(f"Analyzing answer for topic: {state.get('current_sub_topic', 'INTRO')}")
 
@@ -164,7 +164,7 @@ class InterviewGraph:
                         break
 
             # 컨텍스트 텍스트 구성
-            context_text = "\n\n".join(state.get('current_context', []))
+            context_text = "\\n\\n".join(state.get('current_context', []))
 
             # 프롬프트 구성
             prompt = f"""당신은 대학 입시 면접관입니다. 학생의 답변을 분석하고 다음 단계를 결정하세요.
@@ -183,41 +183,21 @@ class InterviewGraph:
 {context_text if context_text else "해당 없음"}
 
 **분석 지침**:
-1. 답변의 충실도, 구체성, 논리성을 평가하세요 (0-100점).
-2. 등급: 좋음(80+), 보통(60-79), 개선(60-)
-3. 강점(논리적 구조, 구체적 사례 등)과 약점(추상적인 답변, 예시 부족 등)을 태그로 추출하세요.
-4. 다음 액션을 결정하세요:
-   - follow_up: 답변이 불충분하거나 더 깊은 파기가 필요할 때
-   - new_topic: 답변이 충실하고 주제를 바꿀 때
+다음 액션을 결정하세요:
+   - follow_up: 답변이 불충분하거나 더 깊은 파기가 필요할 때 (구체적 사례 부족, 논리적 허점, 판단 근거 불명확 등)
+   - new_topic: 답변이 충실하고 구체적이어서 주제를 바꿀 때
    - wrap_up: 시간이 부족하거나(30초 미만) 더 이상 질문할 주제가 없을 때
 
 JSON 형식으로 응답하세요."""
 
-            # JSON 스키마
+            # JSON 스키마 (간소화)
             schema = self.types.Schema(
                 type=self.types.Type.OBJECT,
                 properties={
-                    "action": self.types.Schema(type=self.types.Type.STRING, description="다음 액션"),
-                    "reasoning": self.types.Schema(type=self.types.Type.STRING, description="결정 근거"),
-                    "evaluation": self.types.Schema(
-                        type=self.types.Type.OBJECT,
-                        properties={
-                            "score": self.types.Schema(type=self.types.Type.INTEGER, description="점수"),
-                            "grade": self.types.Schema(type=self.types.Type.STRING, description="등급"),
-                            "feedback": self.types.Schema(type=self.types.Type.STRING, description="피드백"),
-                            "strength_tags": self.types.Schema(
-                                type=self.types.Type.ARRAY,
-                                items=self.types.Schema(type=self.types.Type.STRING)
-                            ),
-                            "weakness_tags": self.types.Schema(
-                                type=self.types.Type.ARRAY,
-                                items=self.types.Schema(type=self.types.Type.STRING)
-                            )
-                        },
-                        required=["score", "grade", "feedback", "strength_tags", "weakness_tags"]
-                    )
+                    "action": self.types.Schema(type=self.types.Type.STRING, description="다음 액션 (follow_up, new_topic, wrap_up)"),
+                    "reasoning": self.types.Schema(type=self.types.Type.STRING, description="결정 근거")
                 },
-                required=["action", "reasoning", "evaluation"]
+                required=["action", "reasoning"]
             )
             
             # Gemini 호출
@@ -225,52 +205,29 @@ JSON 형식으로 응답하세요."""
                 model=self.model,
                 contents=prompt,
                 config={
-    "response_mime_type": "application/json",
-    "response_json_schema": schema,
-}
+                    "response_mime_type": "application/json",
+                    "response_json_schema": schema,
+                }
             )
             
             result = json.loads(response.text)
             
-            # 상태 업데이트
-            evaluation = result['evaluation']
-            
-            # answer_metadata 추가
-            metadata_entry = {
+            # 답변 로그 저장
+            from datetime import datetime
+            log_entry = {
                 "question": last_question,
                 "answer": user_answer,
                 "response_time": response_time,
                 "sub_topic": state.get('current_sub_topic', ''),
-                "evaluation": evaluation,
-                "context_used": state.get('current_context', [])
+                "timestamp": datetime.now().isoformat()
             }
             
-            state['answer_metadata'].append(metadata_entry)
-            
-            # 점수 업데이트 (간단 합산)
-            if state.get('current_sub_topic'):
-                # 주제별로 적절한 점수 카테고리에 반영
-                topic_score_mapping = {
-                    "성적": "전공적합성",
-                    "동아리": "전공적합성",
-                    "리더십": "인성",
-                    "인성/태도": "인성",
-                    "봉사": "인성",
-                    "진로/자율": "발전가능성",
-                    "독서": "발전가능성",
-                    "출결": "의사소통"
-                }
-                
-                score_category = topic_score_mapping.get(
-                    state['current_sub_topic'], 
-                    "의사소통"
-                )
-                state['scores'][score_category] += evaluation['score']
+            state['answer_log'].append(log_entry)
             
             # 다음 액션 저장
             state['next_action'] = result['action']
             
-            logger.info(f"Analysis complete: {result['action']} - Score: {evaluation['score']}")
+            logger.info(f"Analysis complete: {result['action']} - {result['reasoning']}")
             return state
             
         except Exception as e:
@@ -284,8 +241,7 @@ JSON 형식으로 응답하세요."""
     
     async def retrieve_new_topic(
         self, 
-        state: InterviewState,
-        record_id: int
+        state: InterviewState
     ) -> InterviewState:
         """새로운 주제 검색"""
         try:
@@ -310,12 +266,12 @@ JSON 형식으로 응답하세요."""
             from app.services.vector_service import vector_service
             
             chunks = await vector_service.search_chunks_by_topic(
-                record_id=record_id,
+                record_id=state['record_id'],
                 topic=new_topic
             )
             
             state['current_sub_topic'] = new_topic
-            state['current_context'] = [chunk['text'] for chunk in chunks]
+            state['current_context'] = chunks  # 이미 text 리스트
             state['asked_sub_topics'].append(new_topic)
             state['follow_up_count'] = 0
             
@@ -586,13 +542,7 @@ JSON 형식으로 응답하세요."""
                 'current_context': [],
                 'current_sub_topic': '',
                 'asked_sub_topics': [],
-                'answer_metadata': [],
-                'scores': {
-                    "전공적합성": 0,
-                    "인성": 0,
-                    "발전가능성": 0,
-                    "의사소통": 0
-                },
+                'answer_log': [],
                 'next_action': '',
                 'follow_up_count': 0,
                 'current_user_answer': first_answer,
@@ -605,7 +555,6 @@ JSON 형식으로 응답하세요."""
                 state=initial_state,
                 user_answer=first_answer,
                 response_time=response_time,
-                record_id=record_id,
                 thread_id=thread_id
             )
 
@@ -643,17 +592,15 @@ JSON 형식으로 응답하세요."""
         state: InterviewState,
         user_answer: str,
         response_time: int,
-        record_id: int,
         thread_id: str
     ) -> Dict[str, Any]:
         """
         답변 처리 및 다음 질문 생성 (LangGraph invoke 방식)
 
         Args:
-            state: 현재 면접 상태
+            state: 현재 면접 상태 (record_id 포함)
             user_answer: 사용자 답변
             response_time: 답변 소요 시간
-            record_id: 생기부 ID
             thread_id: LangGraph thread ID (Checkpointer용)
 
         Returns:
@@ -669,7 +616,6 @@ JSON 형식으로 응답하세요."""
             # 현재 답변 정보를 state에 설정
             state['current_user_answer'] = user_answer
             state['current_response_time'] = response_time
-            state['record_id'] = record_id
 
             # 남은 시간 체크
             if state['remaining_time'] < 30:
@@ -699,6 +645,139 @@ JSON 형식으로 응답하세요."""
                 "next_question": "죄송합니다. 오류가 발생했습니다. 면접을 종료합니다.",
                 "updated_state": state,
                 "is_finished": True
+            }
+
+    async def analyze_interview_result(self, thread_id: str) -> Dict[str, Any]:
+        """
+        면접 결과 분석 및 종합 리포트 생성
+
+        Args:
+            thread_id: LangGraph thread ID
+
+        Returns:
+            종합 분석 리포트
+        """
+        try:
+            logger.info(f"Analyzing interview result for thread_id: {thread_id}")
+
+            # 1. 상태 조회
+            state = await self.get_state(thread_id)
+
+            # 2. answer_log에서 대화 요약 추출
+            answer_log = state.get('answer_log', [])
+
+            if not answer_log:
+                return {
+                    "error": "No interview data found",
+                    "message": "면접 데이터가 없습니다."
+                }
+
+            # 3. 대화 요약 생성
+            conversation_summary = []
+            for log in answer_log:
+                conversation_summary.append(f"Q: {log['question']}")
+                conversation_summary.append(f"A: {log['answer'][:100]}... (소요시간: {log['response_time']}초)")
+
+            summary_text = "\n".join(conversation_summary)
+
+            # 4. 통계 계산
+            total_response_time = sum(log['response_time'] for log in answer_log)
+            avg_response_time = total_response_time // len(answer_log) if answer_log else 0
+
+            # 5. 주제별 분석
+            topic_analysis = {}
+            for log in answer_log:
+                topic = log.get('sub_topic', '기타')
+                if topic not in topic_analysis:
+                    topic_analysis[topic] = {
+                        "count": 0,
+                        "total_time": 0
+                    }
+                topic_analysis[topic]["count"] += 1
+                topic_analysis[topic]["total_time"] += log['response_time']
+
+            # 6. AI 분석 프롬프트
+            prompt = f"""당신은 대학 입시 면접관입니다. 면접 종료 후 종합 평가를 생성하세요.
+
+**면접 난이도**: {state['difficulty']}
+**총 답변 수**: {len(answer_log)}
+**평균 응답 시간**: {avg_response_time}초
+
+**대화 요약**:
+{summary_text}
+
+**주제별 분석**:
+{json.dumps(topic_analysis, ensure_ascii=False, indent=2)}
+
+**종합 평가 생성 지침**:
+1. 전체 답변 시간 평균 및 논리성 평가
+2. 강점: 답변 시간이 적절하고 구체적 사례가 포함된 주제
+3. 약점: 답변 지연 또는 근거가 빈약했던 주제
+4. 개선 포인트: 질문별 피드백 종합 (결론 중심 말하기, 수치 활용 등)
+5. 전공적합성, 인성, 발전가능성, 의사소통 각 영역별 점수 (0-100)
+
+면접 종료 메시지와 함께 종합 평가를 생성하세요."""
+
+            # 7. JSON 스키마
+            schema = self.types.Schema(
+                type=self.types.Type.OBJECT,
+                properties={
+                    "closing_message": self.types.Schema(type=self.types.Type.STRING),
+                    "total_score": self.types.Schema(type=self.types.Type.INTEGER),
+                    "scores": self.types.Schema(
+                        type=self.types.Type.OBJECT,
+                        properties={
+                            "전공적합성": self.types.Schema(type=self.types.Type.INTEGER),
+                            "인성": self.types.Schema(type=self.types.Type.INTEGER),
+                            "발전가능성": self.types.Schema(type=self.types.Type.INTEGER),
+                            "의사소통": self.types.Schema(type=self.types.Type.INTEGER)
+                        },
+                        required=["전공적합성", "인성", "발전가능성", "의사소통"]
+                    ),
+                    "strengths": self.types.Schema(
+                        type=self.types.Type.ARRAY,
+                        items=self.types.Schema(type=self.types.Type.STRING)
+                    ),
+                    "weaknesses": self.types.Schema(
+                        type=self.types.Type.ARRAY,
+                        items=self.types.Schema(type=self.types.Type.STRING)
+                    ),
+                    "improvement_points": self.types.Schema(
+                        type=self.types.Type.ARRAY,
+                        items=self.types.Schema(type=self.types.Type.STRING)
+                    )
+                },
+                required=["closing_message", "total_score", "scores", "strengths", "weaknesses", "improvement_points"]
+            )
+
+            # 8. Gemini 호출
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_json_schema": schema,
+                }
+            )
+
+            result = json.loads(response.text)
+
+            # 9. 결과 반환
+            return {
+                "thread_id": thread_id,
+                "difficulty": state['difficulty'],
+                "total_questions": len(answer_log),
+                "avg_response_time": avg_response_time,
+                "total_duration": 600 - state.get('remaining_time', 600),
+                "topic_analysis": topic_analysis,
+                "analysis": result
+            }
+
+        except Exception as e:
+            logger.error(f"Error analyzing interview result: {e}")
+            return {
+                "error": str(e),
+                "message": "분석 중 오류가 발생했습니다."
             }
 
 
