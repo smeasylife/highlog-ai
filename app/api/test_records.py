@@ -1,5 +1,5 @@
 """로컬 PDF 테스트용 API 엔드포인트 - S3 없이 직접 PDF 업로드 테스트"""
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
@@ -492,6 +492,295 @@ async def test_chat_text(
 
     except Exception as e:
         logger.error(f"[TEST] Error in chat_text: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _test_process_chat_with_checkpoint(
+    user_answer: str,
+    response_time: int,
+    thread_id: str
+) -> Dict[str, Any]:
+    """
+    Checkpointer에서 상태를 조회하여 답변 처리 (테스트용)
+
+    interview.py의 _process_chat_with_checkpoint와 동일한 로직을 사용합니다.
+    """
+    try:
+        from app.graphs.interview_graph import interview_graph
+
+        # 1. Checkpointer에서 현재 상태 조회
+        current_state = await interview_graph.get_state(thread_id)
+
+        # 2. 상태에서 record_id 추출
+        record_id = current_state.get('record_id')
+
+        # 3. InterviewGraph 처리
+        result = await interview_graph.process_answer(
+            state=current_state,
+            user_answer=user_answer,
+            response_time=response_time,
+            record_id=record_id,
+            thread_id=thread_id
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"[TEST] Error processing chat with checkpoint: {e}")
+        raise
+
+
+# ==================== 인터뷰 테스트용 엔드포인트 (인증 불필요) ====================
+
+@router.post("/interview/initialize/text", response_model=InterviewChatResponse)
+async def test_initialize_interview_text(
+    request: InitializeInterviewRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    텍스트 기반 면접 초기화 테스트용 (인증 불필요)
+
+    첫 질문은 항상 "자기소개 부탁드립니다."로 고정입니다.
+    """
+    try:
+        logger.info(f"[TEST] Initializing text interview for record {request.record_id}")
+
+        # 생기부 존재 확인
+        record = db.query(StudentRecord).filter(
+            StudentRecord.id == request.record_id
+        ).first()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
+
+        if record.status != "READY":
+            raise HTTPException(
+                status_code=400,
+                detail=f"벡터화가 완료되지 않았습니다. 현재 상태: {record.status}"
+            )
+
+        # 고유 thread_id 생성
+        import uuid
+        thread_id = f"test_interview_{request.record_id}_{uuid.uuid4().hex[:8]}"
+        logger.info(f"[TEST] Generated thread_id: {thread_id}")
+
+        # InterviewGraph 초기화 처리
+        from app.graphs.interview_graph import interview_graph
+
+        result = await interview_graph.initialize_interview(
+            record_id=request.record_id,
+            difficulty=request.difficulty,
+            first_answer=request.first_answer,
+            response_time=request.response_time,
+            thread_id=thread_id
+        )
+
+        # 실시간 분석 데이터 추출
+        analysis = None
+        if result['updated_state'].get('answer_metadata'):
+            last_metadata = result['updated_state']['answer_metadata'][-1]
+            analysis = last_metadata.get('evaluation')
+
+        return InterviewChatResponse(
+            next_question=result['next_question'],
+            analysis=analysis,
+            is_finished=result['is_finished'],
+            thread_id=thread_id
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[TEST] Error in initialize_interview_text: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/interview/initialize/audio")
+async def test_initialize_interview_audio(
+    record_id: int = Form(...),
+    difficulty: str = Form(...),
+    audio: UploadFile = File(...),
+    response_time: int = Form(...),
+    db: Session = Depends(get_db)
+):
+    """
+    오디오 기반 면접 초기화 테스트용 (인증 불필요)
+
+    첫 답변을 음성으로 받아서 STT 처리 후 TTS로 질문 반환
+    """
+    try:
+        logger.info(f"[TEST] Initializing audio interview for record {record_id}")
+
+        # 생기부 존재 확인
+        record = db.query(StudentRecord).filter(
+            StudentRecord.id == record_id
+        ).first()
+
+        if not record:
+            raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
+
+        if record.status != "READY":
+            raise HTTPException(
+                status_code=400,
+                detail=f"벡터화가 완료되지 않았습니다. 현재 상태: {record.status}"
+            )
+
+        # 1. STT (Speech-to-Text) - 첫 답변을 텍스트로 변환
+        from app.services.audio_service import audio_service
+
+        audio_bytes = io.BytesIO(await audio.read())
+        first_answer_text = await audio_service.transcribe_audio(
+            audio_bytes=audio_bytes,
+            mime_type=audio.content_type
+        )
+
+        if not first_answer_text:
+            raise HTTPException(status_code=400, detail="Failed to transcribe first answer audio")
+
+        logger.info(f"[TEST] Transcribed first answer: {first_answer_text[:100]}...")
+
+        # 2. 고유 thread_id 생성
+        import uuid
+        thread_id = f"test_interview_{record_id}_{uuid.uuid4().hex[:8]}"
+        logger.info(f"[TEST] Generated thread_id: {thread_id}")
+
+        # 3. InterviewGraph 초기화 처리
+        from app.graphs.interview_graph import interview_graph
+
+        result = await interview_graph.initialize_interview(
+            record_id=record_id,
+            difficulty=difficulty,
+            first_answer=first_answer_text,
+            response_time=response_time,
+            thread_id=thread_id
+        )
+
+        # 4. TTS (Text-to-Speech) - 다음 질문을 음성으로 변환
+        audio_url = None
+        if result['next_question']:
+            audio_url = await audio_service.text_to_speech(
+                text=result['next_question'],
+                language_code="ko-KR"
+            )
+            logger.info(f"[TEST] TTS audio URL generated: {audio_url}")
+
+        # 5. 실시간 분석 데이터 추출
+        analysis = None
+        if result['updated_state'].get('answer_metadata'):
+            last_metadata = result['updated_state']['answer_metadata'][-1]
+            analysis = last_metadata.get('evaluation')
+
+        from app.schemas import AudioInterviewResponse
+        return AudioInterviewResponse(
+            next_question=result['next_question'],
+            analysis=analysis,
+            is_finished=result['is_finished'],
+            thread_id=thread_id,
+            audio_url=audio_url
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[TEST] Error in initialize_interview_audio: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/interview/chat/text/{thread_id}", response_model=InterviewChatResponse)
+async def test_chat_text(
+    thread_id: str,
+    request: SimpleChatRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    텍스트 기반 면접 채팅 테스트용 (인증 불필요)
+    """
+    try:
+        logger.info(f"[TEST] Text chat request for thread_id: {thread_id}")
+
+        # Checkpointer에서 상태 조회하여 처리
+        result = await _test_process_chat_with_checkpoint(
+            user_answer=request.answer,
+            response_time=request.response_time,
+            thread_id=thread_id
+        )
+
+        # 실시간 분석 데이터 추출
+        analysis = None
+        if result['updated_state'].get('answer_metadata'):
+            last_metadata = result['updated_state']['answer_metadata'][-1]
+            analysis = last_metadata.get('evaluation')
+
+        return InterviewChatResponse(
+            next_question=result['next_question'],
+            analysis=analysis,
+            is_finished=result['is_finished']
+        )
+
+    except Exception as e:
+        logger.error(f"[TEST] Error in chat_text: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/interview/chat/audio/{thread_id}")
+async def test_chat_audio(
+    thread_id: str,
+    audio: UploadFile = File(...),
+    response_time: int = Form(...),
+    db: Session = Depends(get_db)
+):
+    """
+    오디오 기반 면접 채팅 테스트용 (인증 불필요)
+    """
+    try:
+        logger.info(f"[TEST] Audio chat request for thread_id: {thread_id}")
+
+        # 1. STT (Speech-to-Text)
+        from app.services.audio_service import audio_service
+
+        audio_bytes = io.BytesIO(await audio.read())
+        text = await audio_service.transcribe_audio(
+            audio_bytes=audio_bytes,
+            mime_type=audio.content_type
+        )
+
+        if not text:
+            raise HTTPException(status_code=400, detail="Failed to transcribe audio")
+
+        logger.info(f"[TEST] Transcribed text: {text[:100]}...")
+
+        # 2. Checkpointer에서 상태 조회하여 처리
+        result = await _test_process_chat_with_checkpoint(
+            user_answer=text,
+            response_time=response_time,
+            thread_id=thread_id
+        )
+
+        # 3. TTS (Text-to-Speech) - 다음 질문을 음성으로 변환
+        audio_url = None
+        if result['next_question']:
+            audio_url = await audio_service.text_to_speech(
+                text=result['next_question'],
+                language_code="ko-KR"
+            )
+            logger.info(f"[TEST] TTS audio URL generated: {audio_url}")
+
+        # 실시간 분석 데이터 추출
+        analysis = None
+        if result['updated_state'].get('answer_metadata'):
+            last_metadata = result['updated_state']['answer_metadata'][-1]
+            analysis = last_metadata.get('evaluation')
+
+        from app.schemas import AudioInterviewResponse
+        return AudioInterviewResponse(
+            next_question=result['next_question'],
+            analysis=analysis,
+            is_finished=result['is_finished'],
+            audio_url=audio_url
+        )
+
+    except Exception as e:
+        logger.error(f"[TEST] Error in chat_audio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

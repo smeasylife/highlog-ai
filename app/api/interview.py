@@ -30,22 +30,22 @@ router = APIRouter()
 
 # ==================== 면접 초기화 ====================
 
-@router.post("/initialize", response_model=InterviewChatResponse)
-async def initialize_interview(
+@router.post("/initialize/text", response_model=InterviewChatResponse)
+async def initialize_interview_text(
     request: InitializeInterviewRequest,
     current_user: CurrentUser = Depends(get_current_user)
 ):
     """
-    면접 초기화 및 첫 답변 처리
+    텍스트 기반 면접 초기화
 
     첫 질문은 항상 "자기소개 부탁드립니다."로 고정입니다.
-    클라이언트가 이 질문을 보여주고, 사용자의 첫 답변을 받아서 서버로 전송합니다.
+    클라이언트가 이 질문을 보여주고, 사용자의 첫 답변(텍스트)을 받아서 서버로 전송합니다.
 
     Args:
         request: 초기화 요청
             - record_id: 생기부 ID
             - difficulty: 난이도 (Easy, Normal, Hard)
-            - first_answer: 첫 답변 (자기소개)
+            - first_answer: 첫 답변 (자기소개 텍스트)
             - response_time: 첫 답변 소요 시간 (초)
 
     Returns:
@@ -56,7 +56,7 @@ async def initialize_interview(
             - thread_id: 고유 thread ID (이후 요청에 사용)
     """
     try:
-        logger.info(f"Initializing interview for record {request.record_id}")
+        logger.info(f"Initializing text interview for record {request.record_id}")
 
         # 고유 thread_id 생성
         thread_id = f"interview_{request.record_id}_{uuid.uuid4().hex[:8]}"
@@ -85,7 +85,93 @@ async def initialize_interview(
         )
 
     except Exception as e:
-        logger.error(f"Error in initialize_interview: {e}")
+        logger.error(f"Error in initialize_interview_text: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/initialize/audio", response_model=AudioInterviewResponse)
+async def initialize_interview_audio(
+    record_id: int = Form(...),
+    difficulty: str = Form(...),
+    audio: UploadFile = File(...),
+    response_time: int = Form(...),
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """
+    오디오 기반 면접 초기화
+
+    첫 질문은 항상 "자기소개 부탁드립니다."로 고정입니다.
+    클라이언트가 이 질문을 보여주고, 사용자의 첫 답변(음성)을 받아서 서버로 전송합니다.
+
+    Args:
+        record_id: 생기부 ID
+        difficulty: 난이도 (Easy, Normal, Hard)
+        audio: 첫 답변 오디오 파일 (자기소개)
+        response_time: 첫 답변 소요 시간 (초)
+
+    Returns:
+        AudioInterviewResponse:
+            - next_question: 두 번째 질문
+            - analysis: 분석 데이터
+            - is_finished: 종료 여부
+            - thread_id: 고유 thread ID (이후 요청에 사용)
+            - audio_url: 다음 질문의 TTS 음성 URL
+    """
+    try:
+        logger.info(f"Initializing audio interview for record {record_id}")
+
+        # 1. STT (Speech-to-Text) - 첫 답변을 텍스트로 변환
+        from app.services.audio_service import audio_service
+
+        audio_bytes = io.BytesIO(await audio.read())
+        first_answer_text = await audio_service.transcribe_audio(
+            audio_bytes=audio_bytes,
+            mime_type=audio.content_type
+        )
+
+        if not first_answer_text:
+            raise HTTPException(status_code=400, detail="Failed to transcribe first answer audio")
+
+        logger.info(f"Transcribed first answer: {first_answer_text[:100]}...")
+
+        # 2. 고유 thread_id 생성
+        thread_id = f"interview_{record_id}_{uuid.uuid4().hex[:8]}"
+        logger.info(f"Generated thread_id: {thread_id}")
+
+        # 3. InterviewGraph 초기화 처리
+        result = await interview_graph.initialize_interview(
+            record_id=record_id,
+            difficulty=difficulty,
+            first_answer=first_answer_text,
+            response_time=response_time,
+            thread_id=thread_id
+        )
+
+        # 4. TTS (Text-to-Speech) - 다음 질문을 음성으로 변환
+        audio_url = None
+        if result['next_question']:
+            audio_url = await audio_service.text_to_speech(
+                text=result['next_question'],
+                language_code="ko-KR"
+            )
+            logger.info(f"TTS audio URL generated: {audio_url}")
+
+        # 5. 실시간 분석 데이터 추출
+        analysis = None
+        if result['updated_state'].get('answer_metadata'):
+            last_metadata = result['updated_state']['answer_metadata'][-1]
+            analysis = last_metadata.get('evaluation')
+
+        return AudioInterviewResponse(
+            next_question=result['next_question'],
+            analysis=analysis,
+            is_finished=result['is_finished'],
+            thread_id=thread_id,
+            audio_url=audio_url
+        )
+
+    except Exception as e:
+        logger.error(f"Error in initialize_interview_audio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
