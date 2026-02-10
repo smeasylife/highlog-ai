@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Dict, Any
 import json
 import asyncio
 import io
@@ -205,12 +205,16 @@ async def _process_local_pdf_vectorization(
         logger.info("📄 로컬 PDF 벡터화 시작")
         logger.info("=" * 60)
 
+        # 진행률 콜백 래퍼 함수 (async lambda 대신)
+        async def progress_wrapper(progress: int):
+            await send_progress(progress, progress_queue)
+
         # 벡터화 (Gemini 청킹 + 임베딩 + DB 저장) - PDF 직접 전달
         success, message, total_chunks = await vector_service.vectorize_pdf(
             pdf_bytes=pdf_bytes,  # PDF 바이트를 직접 전달
             record_id=record_id,
             db=local_db,  # 로컬 DB 세션 사용
-            progress_callback=lambda p: send_progress(p, progress_queue)
+            progress_callback=progress_wrapper
         )
 
         if not success:

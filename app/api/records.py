@@ -300,7 +300,7 @@ async def _process_vectorization_with_progress(
     """
     # 백그라운드 태스크에서는 새로운 DB 세션 생성 필요
     from app.database import SessionLocal
-    
+
     local_db = SessionLocal()
     try:
         logger.info(f"Processing vectorization for record {record_id}")
@@ -310,7 +310,7 @@ async def _process_vectorization_with_progress(
 
         import io
         from app.services.s3_service import s3_service
-        
+
         file_stream = s3_service.get_file_stream(s3_key)
         if not file_stream:
             logger.error("S3 PDF download failed")
@@ -320,12 +320,16 @@ async def _process_vectorization_with_progress(
 
         await send_progress(20, progress_queue)
 
+        # 진행률 콜백 래퍼 함수 (async lambda 대신)
+        async def progress_wrapper(progress: int):
+            await send_progress(progress, progress_queue)
+
         # 2. 벡터화 (Gemini 청킹 + 임베딩 + DB 저장) - PDF 직접 전달
         success, message, total_chunks = await vector_service.vectorize_pdf(
             pdf_bytes=pdf_bytes,  # PDF 바이트를 직접 전달
             record_id=record_id,
             db=local_db,  # 로컬 DB 세션 사용
-            progress_callback=lambda p: send_progress(p, progress_queue)
+            progress_callback=progress_wrapper
         )
 
         if not success:

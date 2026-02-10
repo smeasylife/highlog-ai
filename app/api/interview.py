@@ -11,7 +11,7 @@ import logging
 import io
 import uuid
 from typing import Dict, Any
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from langchain_core.messages import HumanMessage, AIMessage
 
 from app.schemas import (

@@ -9,21 +9,15 @@ from fastapi import Header, HTTPException, Depends, status
 from pydantic import BaseModel
 import jwt
 from jwt import PyJWTError
-import os
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 
 # ========== JWT Configuration ==========
 # These must match the values used in highLog
-# JWT_SECRET is loaded from environment variable
-JWT_SECRET = os.getenv("JWT_SECRET")
-if not JWT_SECRET:
-    raise ValueError(
-        "JWT_SECRET environment variable is not set. "
-        "Please set JWT_SECRET in your .env file to match highLog's JWT secret."
-    )
-JWT_ALGORITHM = "HS256"
+JWT_SECRET = settings.jwt_secret
+JWT_ALGORITHM = settings.jwt_algorithm
 
 
 # ========== Schemas ==========

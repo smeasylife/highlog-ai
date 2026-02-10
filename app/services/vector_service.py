@@ -3,6 +3,7 @@ import logging
 import io
 import json
 import fitz  # PyMuPDF
+import asyncio
 from typing import List, Dict, Tuple
 from pydantic import BaseModel
 from app.models import RecordChunk
@@ -24,7 +25,7 @@ class RecordsResponse(BaseModel):
 
 class VectorService:
     """PDF 벡터화 서비스 - Gemini 기반 카테고리별 청킹 & Embedding"""
-    
+
     def __init__(self):
         # google.genai 클라이언트 초기화
         from google import genai
@@ -35,8 +36,9 @@ class VectorService:
             api_key=settings.google_api_key
         )
         self.types = types
+        self.genai = genai
         self.embedding_model = 'gemini-embedding-001'  # 768차원 embedding 모델
-        self.chat_model = 'gemini-2.5-flash'  # 청킹용 모델  # 청킹용 모델
+        self.chat_model = 'gemini-2.5-flash'  # 청킹용 모델
     
     async def vectorize_pdf(
         self,
@@ -61,20 +63,12 @@ class VectorService:
         try:
             logger.info(f"Starting PDF vectorization for record {record_id}")
 
-            # PDF 크기 확인
-            pdf_bytes.seek(0)
-            pdf_size = len(pdf_bytes.read())
-            pdf_bytes.seek(0)
-
-            # 1. PDF를 2페이지씩 배치로 분할
             # PDF 전체를 fitz로 열어 페이지 수 확인
             import fitz
             doc = fitz.open(stream=pdf_bytes.read(), filetype="pdf")
             total_pages = len(doc)
             doc.close()
             pdf_bytes.seek(0)  # 다시 처음으로
-
-
 
             batch_size = 4  # 4페이지씩 배치
             total_batches = (total_pages + batch_size - 1) // batch_size
@@ -84,41 +78,42 @@ class VectorService:
             if progress_callback:
                 await progress_callback(10)
 
-            # 2. 각 배치를 Gemini로 파싱
+            # 2. 모든 배치를 동시에 처리 (병렬 처리) ⚡
             all_chunks = []
             failed_batches = []
 
-            logger.info("🤖 AI Chunking...")
+            logger.info("🤖 AI Chunking (Parallel Processing)...")
 
+            # 모든 배치 태스크 생성
+            tasks = []
             for i in range(total_batches):
-                try:
+                start_page = i * batch_size
+                end_page = min(start_page + batch_size, total_pages)
+                pages_in_batch = list(range(start_page, end_page))
+                tasks.append(self._parse_pdf_batch_with_gemini(
+                    pdf_bytes, pages_in_batch, i, total_batches
+                ))
+
+            # 동시 실행 (병렬 처리)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # 결과 집계
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.warning(f"⚠️  [{i+1}/{total_batches}] Failed: {str(result)[:80]}... - Skipping")
+                    failed_batches.append(i + 1)
+                elif result:
+                    all_chunks.extend(result)
                     start_page = i * batch_size
                     end_page = min(start_page + batch_size, total_pages)
-                    pages_in_batch = list(range(start_page, end_page))
+                    logger.info(f"📦 [{i+1}/{total_batches}] {len(result)} chunks (pages {start_page+1}-{end_page})")
+                else:
+                    logger.warning(f"⚠️  [{i+1}/{total_batches}] No chunks")
+                    failed_batches.append(i + 1)
 
-                    chunks = await self._parse_pdf_batch_with_gemini(pdf_bytes, pages_in_batch, i, total_batches)
-
-                    if chunks:
-                        all_chunks.extend(chunks)
-                        logger.info(f"📦 [{i+1}/{total_batches}] {len(chunks)} chunks (pages {start_page+1}-{end_page})")
-                    else:
-                        logger.warning(f"⚠️  [{i+1}/{total_batches}] No chunks (pages {start_page+1}-{end_page})")
-                        failed_batches.append(i+1)
-
-                    # 진행률 업데이트 (30-70%)
-                    if progress_callback:
-                        batch_progress = 30 + int(((i + 1) / total_batches) * 40)
-                        await progress_callback(batch_progress)
-
-                except Exception as e:
-                    logger.warning(f"⚠️  [{i+1}/{total_batches}] Failed: {str(e)[:80]}... - Skipping")
-                    failed_batches.append(i+1)
-
-                    # 계속 진행 (하나의 배치 실패가 전체를 망치지 않게)
-                    if progress_callback:
-                        batch_progress = 30 + int(((i + 1) / total_batches) * 40)
-                        await progress_callback(batch_progress)
-                    continue
+            # 진행률 업데이트
+            if progress_callback:
+                await progress_callback(70)
 
             # 실패한 배치가 있어도 계속 진행 (부분 성공 허용)
             if failed_batches:
@@ -128,52 +123,61 @@ class VectorService:
                 logger.error("No chunks generated from any batch")
                 return False, "Failed to generate chunks from all batches", 0
 
-            # 카테고리별 통계
-            category_counts = {}
-            for chunk in all_chunks:
-                cat = chunk['category']
-                category_counts[cat] = category_counts.get(cat, 0) + 1
-            
-            # 카테고리 요약 한 줄로
-            cat_summary = ", ".join([f"{cat}:{count}" for cat, count in sorted(category_counts.items())])
-            logger.info(f"📊 {len(all_chunks)} chunks ({cat_summary})")
-
-            # 3. 각 청크를 벡터화하고 저장
+            # 3. 배치 임베딩 & 벌크 DB 삽입 🔥
             if progress_callback:
                 await progress_callback(75)
 
-            logger.info(f"🔄 Embedding {len(all_chunks)} chunks...")
+            logger.info(f"🔄 Batch Embedding {len(all_chunks)} chunks...")
 
-            saved_count = 0
+            # 배치 임베딩 (20개씩)
+            batch_size = 20
+            all_embeddings = []
             failed_embeddings = 0
-            
-            for idx, chunk_data in enumerate(all_chunks):
+
+            for i in range(0, len(all_chunks), batch_size):
+                batch = all_chunks[i:i+batch_size]
+                texts = [chunk['text'] for chunk in batch]
+                
                 try:
-                    # 텍스트 임베딩
-                    embedding = await self._embed_text(chunk_data['text'])
-
-                    # DB 저장
-                    chunk = RecordChunk(
-                        record_id=record_id,
-                        chunk_text=chunk_data['text'],
-                        chunk_index=chunk_data['index'],
-                        category=chunk_data['category'],
-                        embedding=embedding  # pgvector Vector 타입에 리스트 직접 전달
-                    )
-                    db.add(chunk)
-                    saved_count += 1
-
-                    # 진행률 업데이트 (75-95%)
+                    embeddings = await self._embed_batch(texts)
+                    all_embeddings.extend(embeddings)
+                    
+                    # 진행률 업데이트 (75-90%)
                     if progress_callback:
-                        embed_progress = 75 + int((saved_count / len(all_chunks)) * 20)
-                        await progress_callback(embed_progress)
-
+                        embed_progress = 75 + int(((i + batch_size) / len(all_chunks)) * 15)
+                        await progress_callback(min(embed_progress, 90))
+                        
                 except Exception as e:
-                    logger.debug(f"   ❌ Chunk {idx+1} failed: {str(e)[:50]}")
-                    failed_embeddings += 1
-                    continue
+                    logger.warning(f"⚠️  Batch {i//batch_size + 1} embedding failed: {str(e)[:50]}")
+                    # 실패한 배치는 개별 임베딩으로 시도
+                    for chunk in batch:
+                        try:
+                            emb = await self._embed_text(chunk['text'])
+                            all_embeddings.append(emb)
+                        except Exception as e2:
+                            logger.debug(f"   ❌ Individual chunk failed: {str(e2)[:50]}")
+                            all_embeddings.append(None)  # 실패 표시
+                            failed_embeddings += 1
 
-            db.commit()
+            # 4. 벌크 DB 삽입 (한 번에 저장) 🚀
+            logger.info("💾 Bulk inserting to database...")
+            
+            bulk_data = []
+            for idx, chunk_data in enumerate(all_chunks):
+                if idx < len(all_embeddings) and all_embeddings[idx] is not None:
+                    bulk_data.append({
+                        'record_id': record_id,
+                        'chunk_text': chunk_data['text'],
+                        'chunk_index': chunk_data['index'],
+                        'category': chunk_data['category'],
+                        'embedding': all_embeddings[idx]
+                    })
+            
+            if bulk_data:
+                db.bulk_insert_mappings(RecordChunk, bulk_data)
+                db.commit()
+
+            saved_count = len(bulk_data)
 
             # 최종 요약 한 줄로
             result_parts = [f"✅ {saved_count} saved"]
@@ -279,39 +283,39 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             # PDF에서 해당 페이지 추출
             pdf_bytes.seek(0)
             doc = fitz.open(stream=pdf_bytes.read(), filetype="pdf")
-            
-            # 각 페이지를 개별 PDF로 변환
-            import io
-            pdf_parts = []
+
+            # 각 페이지를 이미지로 변환
+            image_parts = []
             for page_num in page_numbers:
                 page = doc[page_num]
-                # 단일 페이지 PDF 생성
-                single_page_doc = fitz.open()
-                single_page_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
-                
-                # 바이트로 변환
-                pdf_byte_arr = io.BytesIO()
-                single_page_doc.save(pdf_byte_arr, garbage=4, deflate=True)
-                pdf_bytes_data = pdf_byte_arr.getvalue()
-                single_page_doc.close()
-                
+                # 페이지를 중간 해상도 이미지로 변환 (속도와 품질 밸런스)
+                pix = page.get_pixmap(dpi=150)
+                img_bytes = pix.tobytes("png")
+
                 # genai.Part로 변환
-                pdf_parts.append(self.types.Part.from_bytes(
-                    data=pdf_bytes_data,
-                    mime_type="application/pdf"
+                image_parts.append(self.types.Part.from_bytes(
+                    data=img_bytes,
+                    mime_type="image/png"
                 ))
-            
+
             doc.close()
 
-            # Gemini 2.5 Flash에 요청 전송 (JSON 형식 응답 강제)
-            response = self.client.models.generate_content(
+            # Gemini 2.5 Flash에 비동기 요청 전송 (JSON 형식 응답 강제)
+            logger.info(f"🚀 [{batch_index+1}/{total_batches}] Sending request for pages {page_numbers}...")
+            import time
+            start_time = time.time()
+
+            response = await self.client.aio.models.generate_content(
                 model=self.chat_model,
-                contents=[prompt] + pdf_parts,
+                contents=[prompt] + image_parts,
                 config={
                     "response_mime_type": "application/json",
                     "response_json_schema": RecordsResponse.model_json_schema(),
                 }
             )
+
+            elapsed = time.time() - start_time
+            logger.info(f"✅ [{batch_index+1}/{total_batches}] Response received for pages {page_numbers} ({elapsed:.1f}s)")
             
             # 응답 텍스트 추출 및 JSON 파싱
             response_text = response.text
@@ -338,26 +342,10 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             logger.warning(f"⚠️  Gemini error: {str(e)}")
             raise
 
-    def _pil_image_to_part(self, image):
-        """PIL 이미지를 Gemini에 전송 가능한 Part로 변환"""
-        import io
-        from google.genai import types
-        
-        # 이미지를 바이트로 변환
-        img_byte_arr = io.BytesIO()
-        image.save(img_byte_arr, format='PNG')
-        img_bytes = img_byte_arr.getvalue()
-        
-        # genai.Part로 변환
-        return types.Part.from_bytes(
-            data=img_bytes,
-            mime_type="image/png"
-        )
-    
     async def _embed_text(self, text: str) -> List[float]:
-        """텍스트를 벡터로 임베딩 (768차원)"""
+        """텍스트를 벡터로 임베딩 (768차원) - 개별 텍스트용"""
         try:
-            result = self.client.models.embed_content(
+            result = await self.client.aio.models.embed_content(
                 model=self.embedding_model,
                 contents=text,
                 config=self.types.EmbedContentConfig(
@@ -368,6 +356,40 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
         except Exception as e:
             logger.error(f"Embedding failed: {e}")
             raise
+
+    async def _embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """여러 텍스트를 한 번에 배치 임베딩 (768차원) 🔥
+
+        Google Embedding API는 배치 처리를 지원하여 최대 100개까지 동시에 처리 가능
+        """
+        try:
+            import time
+            start_time = time.time()
+
+            result = await self.client.aio.models.embed_content(
+                model=self.embedding_model,
+                contents=texts,  # 리스트 전달
+                config=self.types.EmbedContentConfig(
+                    output_dimensionality=768
+                )
+            )
+
+            elapsed = time.time() - start_time
+            logger.debug(f"📊 Embedded {len(texts)} chunks in {elapsed:.2f}s")
+
+            return [emb.values for emb in result.embeddings]
+        except Exception as e:
+            logger.warning(f"Batch embedding failed: {e}, falling back to individual")
+            # 배치 실패 시 개별 처리로 폴백
+            embeddings = []
+            for text in texts:
+                try:
+                    emb = await self._embed_text(text)
+                    embeddings.append(emb)
+                except Exception as e2:
+                    logger.error(f"Individual embedding failed: {e2}")
+                    raise
+            return embeddings
     
     async def search_chunks_by_topic(
         self,

@@ -8,7 +8,7 @@ import io
 import os
 from typing import Optional
 from google import genai
-from google.genai import types
+from google.genai import types as genai_types
 from google.cloud import texttospeech
 from config import settings
 import tempfile
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class AudioService:
     """오디오 처리 서비스"""
-    
+
     def __init__(self):
         # Google GenAI 클라이언트 (STT용)
         self.genai_client = genai.Client(api_key=settings.google_api_key)
@@ -27,7 +27,7 @@ class AudioService:
         # Google Cloud TTS 클라이언트
         try:
             # Google Cloud credentials 확인
-            credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            credentials_path = settings.google_application_credentials
             if credentials_path:
                 self.tts_client = texttospeech.TextToSpeechClient()
                 logger.info("Google Cloud TTS client initialized")
@@ -57,14 +57,14 @@ class AudioService:
             logger.info(f"Transcribing audio ({len(audio_bytes)} bytes, {mime_type})")
             
             # Gemini Part 생성
-            audio_part = self.types.Part.from_bytes(
+            audio_part = genai_types.Part.from_bytes(
                 data=audio_bytes,
                 mime_type=mime_type
             )
             
             # STT 요청
             prompt = "이 오디오는 면접 답변입니다. 내용을 그대로 텍스트로 변환해주세요."
-            
+
             response = self.genai_client.models.generate_content(
                 model=self.stt_model,
                 contents=[prompt, audio_part],

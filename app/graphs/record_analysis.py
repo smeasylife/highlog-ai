@@ -336,8 +336,8 @@ class QuestionGenerationGraph:
                 required=["questions"]
             )
 
-            # Google GenAI로 구조화된 출력 생성
-            response = self.client.models.generate_content(
+            # Google GenAI로 구조화된 출력 생성 (비동기)
+            response = await self.client.aio.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config={
