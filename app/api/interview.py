@@ -333,70 +333,94 @@ async def get_interview_history(
 ):
     """
     로그인한 유저의 인터뷰 내역 전체 조회
-    
+
     Returns:
         List[Dict]:
             - thread_id: 인터뷰 식별자
-            - started_at: 면접 시작 시간
-            - avg_response_time: 평균 응답 시간 (초)
-            - total_questions: 총 질문 수
             - difficulty: 난이도
-            - status: 상태
-            - record_id: 생기부 ID
+            - avg_response_time: 평균 응답 시간 (초)
+            - started_at: 면접 시작 시간
+            - record_title: 생기부 제목
     """
     try:
         import asyncpg
+        from app.models import StudentRecord
+        from app.database import get_db
 
         # 체크포인터 테이블에서 사용자의 thread 조회
         # thread_id 형식: interview_{user_id}_{record_id}_{uuid}
         conn_string = interview_graph.checkpointer.conn_string
-        
+
         conn = await asyncpg.connect(conn_string)
-        
+        db = next(get_db())
+
         try:
             # thread_id 패턴으로 필터링
             pattern = f"interview_{current_user.user_id}_%"
-            
+
             query = """
-                SELECT thread_id 
-                FROM checkpoints 
-                WHERE thread_id LIKE $1 
-                GROUP BY thread_id 
+                SELECT thread_id
+                FROM checkpoints
+                WHERE thread_id LIKE $1
+                GROUP BY thread_id
                 ORDER BY MAX(thread_id) DESC
             """
-            
+
             rows = await conn.fetch(query, pattern)
-            
+
             # 각 thread의 상태 조회
             history = []
             for row in rows:
                 thread_id = row['thread_id']
-                
+
                 try:
                     # 체크포인트에서 상태 조회
                     state = await interview_graph.get_state(thread_id)
-                    
+
+                    # record_id를 state에서 추출
+                    record_id = state.get('record_id')
+
+                    # StudentRecord에서 title만 조회
+                    record_title = None
+                    if record_id:
+                        record = db.query(StudentRecord.title).filter(
+                            StudentRecord.id == record_id
+                        ).first()
+                        record_title = record[0] if record else None
+
+                    # answer_log에서 평균 응답 시간 계산
+                    answer_log = state.get('answer_log', [])
+                    if answer_log:
+                        total_time = sum(log.get('response_time', 0) for log in answer_log)
+                        avg_response_time = total_time // len(answer_log)
+                        # 첫 답변의 timestamp를 started_at으로 사용
+                        started_at = answer_log[0].get('timestamp') if answer_log[0].get('timestamp') else None
+                    else:
+                        avg_response_time = 0
+                        started_at = None
+
                     # 메타데이터 추출
                     history.append({
                         "thread_id": thread_id,
                         "difficulty": state.get('difficulty'),
-                        "interview_stage": state.get('interview_stage'),
-                        "total_questions": len(state.get('answer_log', [])),
-                        "remaining_time": state.get('remaining_time', 0)
+                        "avg_response_time": avg_response_time,
+                        "started_at": started_at,
+                        "record_title": record_title
                     })
                 except Exception as e:
                     logger.warning(f"Failed to load state for thread {thread_id}: {e}")
                     continue
-            
+
             logger.info(f"Retrieved {len(history)} interview sessions for user {current_user.user_id}")
-            
+
             return {
                 "count": len(history),
                 "interviews": history
             }
-            
+
         finally:
             await conn.close()
+            db.close()
         
     except Exception as e:
         logger.error(f"Error retrieving interview history: {e}")
