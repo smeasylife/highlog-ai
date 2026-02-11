@@ -537,7 +537,7 @@ JSON 형식으로 응답하세요."""
         user_answer: str,
         response_time: int,
         thread_id: str
-    ) -> Dict[str, Any]:
+    ) -> str:
         """
         답변 처리 및 다음 질문 생성 (LangGraph invoke 방식)
 
@@ -548,7 +548,7 @@ JSON 형식으로 응답하세요."""
             thread_id: LangGraph thread ID (Checkpointer용)
 
         Returns:
-            Dict with next_question, updated_state, is_finished
+            str: 다음 질문 텍스트
         """
         try:
             # 사용자 답변을 대화 기록에 추가
@@ -565,7 +565,7 @@ JSON 형식으로 응답하세요."""
             if state['remaining_time'] < 30:
                 state['next_action'] = "wrap_up"
 
-            # LangGraph invoke (Checkpointer가 자동으로 상태 저장)
+            # LangGraph invoke
             config = {"configurable": {"thread_id": thread_id}}
             result_state = await self.graph.ainvoke(state, config=config)
             
@@ -577,19 +577,11 @@ JSON 형식으로 응답하세요."""
                         next_question = msg.content
                         break
 
-            return {
-                "next_question": next_question,
-                "updated_state": result_state,
-                "is_finished": result_state.get('interview_stage') == "WRAP_UP"
-            }
+            return next_question
 
         except Exception as e:
             logger.error(f"Error processing answer: {e}")
-            return {
-                "next_question": "죄송합니다. 오류가 발생했습니다. 면접을 종료합니다.",
-                "updated_state": state,
-                "is_finished": True
-            }
+            return "죄송합니다. 오류가 발생했습니다. 면접을 종료합니다."
 
     async def analyze_interview_result(self, thread_id: str) -> Dict[str, Any]:
         """

@@ -63,7 +63,7 @@ async def initialize_interview_text(
         logger.info(f"Generated thread_id: {thread_id}")
 
         # InterviewGraph 초기화 처리 (Checkpointer가 상태 자동 저장)
-        result = await interview_graph.initialize_interview(
+        next_question = await interview_graph.initialize_interview(
             record_id=request.record_id,
             difficulty=request.difficulty,
             first_answer=request.first_answer,
@@ -72,10 +72,7 @@ async def initialize_interview_text(
         )
 
         return InterviewChatResponse(
-            next_question=result['next_question'],
-            analysis=None,
-            is_finished=result['is_finished'],
-            thread_id=thread_id
+            next_question=next_question
         )
 
     except Exception as e:
@@ -133,7 +130,7 @@ async def initialize_interview_audio(
         logger.info(f"Generated thread_id: {thread_id}")
 
         # 3. InterviewGraph 초기화 처리 (Checkpointer가 상태 자동 저장)
-        result = await interview_graph.initialize_interview(
+        next_question = await interview_graph.initialize_interview(
             record_id=record_id,
             difficulty=difficulty,
             first_answer=first_answer_text,
@@ -143,19 +140,16 @@ async def initialize_interview_audio(
 
         # 4. TTS (Text-to-Speech) - 다음 질문을 음성으로 변환
         audio_url = None
-        if result['next_question']:
+        if next_question:
             audio_url = await audio_service.text_to_speech(
-                text=result['next_question'],
+                text=next_question,
                 language_code="ko-KR"
             )
             logger.info(f"TTS audio URL generated: {audio_url}")
 
         # 5. 결과 반환
         return AudioInterviewResponse(
-            next_question=result['next_question'],
-            analysis=None,
-            is_finished=result['is_finished'],
-            thread_id=thread_id,
+            next_question=next_question,
             audio_url=audio_url
         )
 
@@ -197,16 +191,14 @@ async def chat_text(
             raise HTTPException(status_code=403, detail="Access denied to this interview")
 
         # Checkpointer에서 상태 조회하여 처리 (record_id는 state에서 추출)
-        result = await _process_chat_with_checkpoint(
+        next_question = await _process_chat_with_checkpoint(
             user_answer=request.answer,
             response_time=request.response_time,
             thread_id=thread_id
         )
 
         return InterviewChatResponse(
-            next_question=result['next_question'],
-            analysis=None,
-            is_finished=result['is_finished']
+            next_question=next_question
         )
 
     except Exception as e:
@@ -257,7 +249,7 @@ async def chat_audio(
         logger.info(f"Transcribed text: {text[:100]}...")
 
         # 2. Checkpointer에서 상태 조회하여 처리 (record_id는 state에서 추출)
-        result = await _process_chat_with_checkpoint(
+        next_question = await _process_chat_with_checkpoint(
             user_answer=text,
             response_time=response_time,
             thread_id=thread_id
@@ -265,17 +257,15 @@ async def chat_audio(
 
         # 3. TTS (Text-to-Speech) - 다음 질문을 음성으로 변환
         audio_url = None
-        if result['next_question']:
+        if next_question:
             audio_url = await audio_service.text_to_speech(
-                text=result['next_question'],
+                text=next_question,
                 language_code="ko-KR"
             )
             logger.info(f"TTS audio URL generated: {audio_url}")
 
         return AudioInterviewResponse(
-            next_question=result['next_question'],
-            analysis=None,
-            is_finished=result['is_finished'],
+            next_question=next_question,
             audio_url=audio_url
         )
 
@@ -290,7 +280,7 @@ async def _process_chat_with_checkpoint(
     user_answer: str,
     response_time: int,
     thread_id: str
-) -> Dict[str, Any]:
+) -> str:
     """
     Checkpointer에서 상태를 조회하여 답변 처리
 
@@ -300,7 +290,7 @@ async def _process_chat_with_checkpoint(
         thread_id: LangGraph thread ID
 
     Returns:
-        처리 결과 딕셔너리
+        str: 다음 질문 텍스트
     """
     try:
         # 1. Checkpointer에서 현재 상태 조회
@@ -310,7 +300,7 @@ async def _process_chat_with_checkpoint(
         record_id = current_state.get('record_id')
 
         # 3. InterviewGraph 처리
-        result = await interview_graph.process_answer(
+        next_question = await interview_graph.process_answer(
             state=current_state,
             user_answer=user_answer,
             response_time=response_time,
@@ -318,7 +308,7 @@ async def _process_chat_with_checkpoint(
             thread_id=thread_id
         )
 
-        return result
+        return next_question
 
     except Exception as e:
         logger.error(f"Error processing chat with checkpoint: {e}")
