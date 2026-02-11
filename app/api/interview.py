@@ -418,18 +418,20 @@ async def analyze_interview_result(
 
     Returns:
         종합 분석 리포트:
-            - thread_id: 면접 식별자
-            - difficulty: 난이도
-            - total_questions: 총 질문 수
-            - avg_response_time: 평균 응답 시간
-            - topic_analysis: 주제별 분석
-            - analysis: AI 분석 결과
-                - closing_message: 종료 메시지
-                - total_score: 총점
-                - scores: 영역별 점수
-                - strengths: 강점
-                - weaknesses: 약점
-                - improvement_points: 개선 포인트
+            - scores: 영역별 점수
+                - 전공적합성: 0~25점
+                - 인성: 0~25점
+                - 발전가능성: 0~25점
+                - 의사소통능력: 0~25점
+                - 총점: 0~100점
+            - strength_tags: 강점 태그 리스트 (예: 구체적 사례 제시, 논리적 구조)
+            - weakness_tags: 단점 태그 리스트 (예: 답변 시간이 느림, 근거 부족)
+            - detailed_analysis: 질문별 상세 분석 리스트
+                - question: 질문 내용
+                - response_time: 답변 시간(초)
+                - evaluation: 평가 (좋음/보통/나쁨)
+                - improvement_point: 개선 포인트
+                - supplement_needed: 보완 필요 사항
     """
     try:
         # thread_id에서 user_id 추출하여 권한 확인

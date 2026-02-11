@@ -437,11 +437,9 @@ async def test_initialize_interview(request: InitializeInterviewRequest):
             thread_id=thread_id
         )
 
-        # 실시간 분석 데이터 추출
+        # 실시간 분석 데이터 추출 (현재 미구현)
         analysis = None
-        if result['updated_state'].get('answer_metadata'):
-            last_metadata = result['updated_state']['answer_metadata'][-1]
-            analysis = last_metadata.get('evaluation')
+        # TODO: analyzer 노드에서 평가 데이터를 생성하도록 구현 필요
 
         return InterviewChatResponse(
             next_question=result['next_question'],
@@ -478,11 +476,9 @@ async def test_chat_text(
             thread_id=thread_id
         )
 
-        # 실시간 분석 데이터 추출
+        # 실시간 분석 데이터 추출 (현재 미구현)
         analysis = None
-        if result['updated_state'].get('answer_metadata'):
-            last_metadata = result['updated_state']['answer_metadata'][-1]
-            analysis = last_metadata.get('evaluation')
+        # TODO: analyzer 노드에서 평가 데이터를 생성하도록 구현 필요
 
         return InterviewChatResponse(
             next_question=result['next_question'],
@@ -575,11 +571,9 @@ async def test_initialize_interview_text(
             thread_id=thread_id
         )
 
-        # 실시간 분석 데이터 추출
+        # 실시간 분석 데이터 추출 (현재 미구현)
         analysis = None
-        if result['updated_state'].get('answer_metadata'):
-            last_metadata = result['updated_state']['answer_metadata'][-1]
-            analysis = last_metadata.get('evaluation')
+        # TODO: analyzer 노드에서 평가 데이터를 생성하도록 구현 필요
 
         return InterviewChatResponse(
             next_question=result['next_question'],
@@ -705,11 +699,9 @@ async def test_chat_text(
             thread_id=thread_id
         )
 
-        # 실시간 분석 데이터 추출
+        # 실시간 분석 데이터 추출 (현재 미구현)
         analysis = None
-        if result['updated_state'].get('answer_metadata'):
-            last_metadata = result['updated_state']['answer_metadata'][-1]
-            analysis = last_metadata.get('evaluation')
+        # TODO: analyzer 노드에서 평가 데이터를 생성하도록 구현 필요
 
         return InterviewChatResponse(
             next_question=result['next_question'],
@@ -765,11 +757,9 @@ async def test_chat_audio(
             )
             logger.info(f"[TEST] TTS audio URL generated: {audio_url}")
 
-        # 실시간 분석 데이터 추출
+        # 실시간 분석 데이터 추출 (현재 미구현)
         analysis = None
-        if result['updated_state'].get('answer_metadata'):
-            last_metadata = result['updated_state']['answer_metadata'][-1]
-            analysis = last_metadata.get('evaluation')
+        # TODO: analyzer 노드에서 평가 데이터를 생성하도록 구현 필요
 
         from app.schemas import AudioInterviewResponse
         return AudioInterviewResponse(

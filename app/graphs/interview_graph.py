@@ -424,81 +424,24 @@ JSON 형식으로 응답하세요."""
         """면접 종료 및 요약 생성"""
         try:
             logger.info("Generating wrap-up summary")
-            
-            # 전체 대화 기록 분석
-            conversation_summary = []
-            for metadata in state.get('answer_metadata', []):
-                conversation_summary.append(f"Q: {metadata['question']}")
-                conversation_summary.append(f"A: {metadata['answer'][:100]}...")
-            
-            summary_text = "\n".join(conversation_summary)
-            
-            # 프롬프트
-            prompt = f"""당신은 대학 입시 면접관입니다. 면접 종료 후 종합 평가를 생성하세요.
 
-**면접 내이도**: {state['difficulty']}
-**총 답변 수**: {len(state.get('answer_metadata', []))}
+            # 전체 대화 기록 분석 (answer_log 사용)
+            answer_log = state.get('answer_log', [])
 
-**대화 요약**:
-{summary_text}
+            # 간단한 종료 메시지만 생성 (상세 분석은 analyze_interview_result에서)
+            closing_message = f"""면접을 종료합니다. 수고하셨습니다.
 
-**평가 점수**:
-{json.dumps(state.get('scores', {}), ensure_ascii=False, indent=2)}
+📊 **면접 요약**
+- 총 질문 수: {len(answer_log)}개
+- 소요 시간: {600 - state.get('remaining_time', 600)}초
 
-**종합 평가 생성 지침**:
-1. 전체 답변 시간 평균 및 논리성 점수 합산
-2. 강점: 답변 시간이 적절하고 구체적 사례가 포함된 주제
-3. 약점: 답변 지연 또는 근거가 빈약했던 주제
-4. 개선 포인트: 질문별 피드백 종합
+상세 분석 결과는 면접 종료 후 확인해주세요."""
 
-면접을 종료한다는 메시지와 함께 종합 평가를 생성하세요."""
-
-            # JSON 스키마
-            schema = self.types.Schema(
-                type=self.types.Type.OBJECT,
-                properties={
-                    "closing_message": self.types.Schema(type=self.types.Type.STRING),
-                    "total_score": self.types.Schema(type=self.types.Type.INTEGER),
-                    "strengths": self.types.Schema(
-                        type=self.types.Type.ARRAY,
-                        items=self.types.Schema(type=self.types.Type.STRING)
-                    ),
-                    "weaknesses": self.types.Schema(
-                        type=self.types.Type.ARRAY,
-                        items=self.types.Schema(type=self.types.Type.STRING)
-                    ),
-                    "improvement_points": self.types.Schema(
-                        type=self.types.Type.ARRAY,
-                        items=self.types.Schema(type=self.types.Type.STRING)
-                    )
-                },
-                required=["closing_message", "total_score", "strengths", "weaknesses", "improvement_points"]
-            )
-            
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config={
-    "response_mime_type": "application/json",
-    "response_json_schema": schema,
-}
-            )
-            
-            result = json.loads(response.text)
-            
-            # 종료 메시지 추가
-            closing = f"""{result['closing_message']}
-
-**종합 평가**:
-- 총점: {result['total_score']}점
-- 강점: {', '.join(result['strengths'])}
-- 개선 포인트: {', '.join(result['improvement_points'])}"""
-
-            state['conversation_history'].append(AIMessage(content=closing))
+            state['conversation_history'].append(AIMessage(content=closing_message))
             state['interview_stage'] = "WRAP_UP"
-            
+
             return state
-            
+
         except Exception as e:
             logger.error(f"Error in wrap_up: {e}")
             state['conversation_history'].append(
@@ -673,29 +616,13 @@ JSON 형식으로 응답하세요."""
                     "message": "면접 데이터가 없습니다."
                 }
 
-            # 3. 대화 요약 생성
+            # 3. 대화 요약 생성 (전체 답변 사용)
             conversation_summary = []
             for log in answer_log:
                 conversation_summary.append(f"Q: {log['question']}")
-                conversation_summary.append(f"A: {log['answer'][:100]}... (소요시간: {log['response_time']}초)")
+                conversation_summary.append(f"A: {log['answer']} (소요시간: {log['response_time']}초)")
 
             summary_text = "\n".join(conversation_summary)
-
-            # 4. 통계 계산
-            total_response_time = sum(log['response_time'] for log in answer_log)
-            avg_response_time = total_response_time // len(answer_log) if answer_log else 0
-
-            # 5. 주제별 분석
-            topic_analysis = {}
-            for log in answer_log:
-                topic = log.get('sub_topic', '기타')
-                if topic not in topic_analysis:
-                    topic_analysis[topic] = {
-                        "count": 0,
-                        "total_time": 0
-                    }
-                topic_analysis[topic]["count"] += 1
-                topic_analysis[topic]["total_time"] += log['response_time']
 
             # 6. AI 분석 프롬프트
             prompt = f"""당신은 대학 입시 면접관입니다. 면접 종료 후 종합 평가를 생성하세요.
@@ -704,51 +631,68 @@ JSON 형식으로 응답하세요."""
 **총 답변 수**: {len(answer_log)}
 **평균 응답 시간**: {avg_response_time}초
 
-**대화 요약**:
+**전체 대화 내용**:
 {summary_text}
 
-**주제별 분석**:
-{json.dumps(topic_analysis, ensure_ascii=False, indent=2)}
+**점수 산정 기준**:
+- 전공적합성: 0~25점 (지원 전공에 대한 이해도, 관련 활동과의 연결성)
+- 인성: 0~25점 (태도, 성실성, 타인에 대한 배려)
+- 발전가능성: 0~25점 (학습 의지, 성장 마인드, 자기 개선 노력)
+- 의사소통능력: 0~25점 (논리적 말하기, 명확한 표현, 경청 태도)
+- 총점: 0~100점 (위 4개 영역 합계)
 
-**종합 평가 생성 지침**:
-1. 전체 답변 시간 평균 및 논리성 평가
-2. 강점: 답변 시간이 적절하고 구체적 사례가 포함된 주제
-3. 약점: 답변 지연 또는 근거가 빈약했던 주제
-4. 개선 포인트: 질문별 피드백 종합 (결론 중심 말하기, 수치 활용 등)
-5. 전공적합성, 인성, 발전가능성, 의사소통 각 영역별 점수 (0-100)
+**강점 태그 예시**: 구체적 사례 제시, 논리적 구조를 가짐, 자신감 있는 태도, 구체적인 수치 인용, 성실한 답변 등
 
-면접 종료 메시지와 함께 종합 평가를 생성하세요."""
+**단점 태그 예시**: 답변 시간이 느림, 근거 부족, 질문 의도 재확인 필요, 추상적인 답변, 결론이 불명확함 등
+
+**상세 분석 기준**:
+- 평가: 좋음/보통/나쁨 (답변의 충실도, 구체성, 논리성 고려)
+- 개선 포인트: "내 역할을 더 명확히 강조하기", "결론을 먼저 말하고 구체 사례 덧붙이기" 등
+- 보완 필요: "배운 점을 전공과 연결하는 문장 1줄 추가", "구체적인 결과 수치 언급하기" 등
+
+**JSON 형식으로 종합 평가를 생성하세요.**
+
+각 답변에 대해 질문 내용, 답변 시간, 평가, 개선 포인트, 보완 필요 항목을 분석하세요."""
 
             # 7. JSON 스키마
             schema = self.types.Schema(
                 type=self.types.Type.OBJECT,
                 properties={
-                    "closing_message": self.types.Schema(type=self.types.Type.STRING),
-                    "total_score": self.types.Schema(type=self.types.Type.INTEGER),
                     "scores": self.types.Schema(
                         type=self.types.Type.OBJECT,
                         properties={
-                            "전공적합성": self.types.Schema(type=self.types.Type.INTEGER),
-                            "인성": self.types.Schema(type=self.types.Type.INTEGER),
-                            "발전가능성": self.types.Schema(type=self.types.Type.INTEGER),
-                            "의사소통": self.types.Schema(type=self.types.Type.INTEGER)
+                            "전공적합성": self.types.Schema(type=self.types.Type.INTEGER, minimum=0, maximum=25),
+                            "인성": self.types.Schema(type=self.types.Type.INTEGER, minimum=0, maximum=25),
+                            "발전가능성": self.types.Schema(type=self.types.Type.INTEGER, minimum=0, maximum=25),
+                            "의사소통능력": self.types.Schema(type=self.types.Type.INTEGER, minimum=0, maximum=25),
+                            "총점": self.types.Schema(type=self.types.Type.INTEGER, minimum=0, maximum=100)
                         },
-                        required=["전공적합성", "인성", "발전가능성", "의사소통"]
+                        required=["전공적합성", "인성", "발전가능성", "의사소통능력", "총점"]
                     ),
-                    "strengths": self.types.Schema(
+                    "strength_tags": self.types.Schema(
                         type=self.types.Type.ARRAY,
                         items=self.types.Schema(type=self.types.Type.STRING)
                     ),
-                    "weaknesses": self.types.Schema(
+                    "weakness_tags": self.types.Schema(
                         type=self.types.Type.ARRAY,
                         items=self.types.Schema(type=self.types.Type.STRING)
                     ),
-                    "improvement_points": self.types.Schema(
+                    "detailed_analysis": self.types.Schema(
                         type=self.types.Type.ARRAY,
-                        items=self.types.Schema(type=self.types.Type.STRING)
+                        items=self.types.Schema(
+                            type=self.types.Type.OBJECT,
+                            properties={
+                                "question": self.types.Schema(type=self.types.Type.STRING, description="질문 내용"),
+                                "response_time": self.types.Schema(type=self.types.Type.INTEGER, description="답변 시간(초)"),
+                                "evaluation": self.types.Schema(type=self.types.Type.STRING, description="평가 (좋음/보통/나쁨)"),
+                                "improvement_point": self.types.Schema(type=self.types.Type.STRING, description="개선 포인트"),
+                                "supplement_needed": self.types.Schema(type=self.types.Type.STRING, description="보완 필요 사항")
+                            },
+                            required=["question", "response_time", "evaluation", "improvement_point", "supplement_needed"]
+                        )
                     )
                 },
-                required=["closing_message", "total_score", "scores", "strengths", "weaknesses", "improvement_points"]
+                required=["scores", "strength_tags", "weakness_tags", "detailed_analysis"]
             )
 
             # 8. Gemini 호출
@@ -765,13 +709,10 @@ JSON 형식으로 응답하세요."""
 
             # 9. 결과 반환
             return {
-                "thread_id": thread_id,
-                "difficulty": state['difficulty'],
-                "total_questions": len(answer_log),
-                "avg_response_time": avg_response_time,
-                "total_duration": 600 - state.get('remaining_time', 600),
-                "topic_analysis": topic_analysis,
-                "analysis": result
+                "scores": result.get("scores", {}),
+                "strength_tags": result.get("strength_tags", []),
+                "weakness_tags": result.get("weakness_tags", []),
+                "detailed_analysis": result.get("detailed_analysis", [])
             }
 
         except Exception as e:
