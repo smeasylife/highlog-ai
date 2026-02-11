@@ -327,7 +327,7 @@ async def _process_chat_with_checkpoint(
 
 # ==================== 인터뷰 내역 조회 ====================
 
-@router.get("/history")
+@router.get("/list")
 async def get_interview_history(
     current_user: CurrentUser = Depends(get_current_user)
 ):
@@ -424,6 +424,53 @@ async def get_interview_history(
         
     except Exception as e:
         logger.error(f"Error retrieving interview history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 면접 기록 조회 ====================
+
+@router.get("/logs/{thread_id}")
+async def get_interview_logs(
+    thread_id: str,
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """
+    특정 면접의 대화 기록 반환
+
+    Args:
+        thread_id: 면접 thread ID
+
+    Returns:
+        대화 기록:
+            - thread_id: 면접 식별자
+            - difficulty: 난이도
+            - logs: 질문/답변 로그 리스트
+                - question: 질문 내용
+                - answer: 답변 내용
+                - response_time: 답변 시간(초)
+                - sub_topic: 주제
+                - timestamp: 응답 시간
+    """
+    try:
+        # thread_id에서 user_id 추출하여 권한 확인
+        parts = thread_id.split('_')
+        if len(parts) < 2 or parts[1] != str(current_user.user_id):
+            raise HTTPException(status_code=403, detail="Access denied to this interview")
+
+        # 상태 조회
+        state = await interview_graph.get_state(thread_id)
+
+        # answer_log 반환
+        return {
+            "thread_id": thread_id,
+            "difficulty": state.get('difficulty'),
+            "logs": state.get('answer_log', [])
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving interview logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
