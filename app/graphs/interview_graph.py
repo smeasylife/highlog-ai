@@ -147,7 +147,8 @@ class InterviewGraph:
         # Checkpointer와 함께 컴파일
         return workflow.compile(checkpointer=self.checkpointer)
     
-    """답변 분석 및 다음 액션 결정 (꼬리질문 여부만 판단)"""
+    async def analyzer(self, state: InterviewState) -> InterviewState:
+        """답변 분석 및 다음 액션 결정 (꼬리질문 여부만 판단)"""
         try:
             logger.info(f"Analyzing answer for topic: {state.get('current_sub_topic', 'INTRO')}")
 
