@@ -35,9 +35,9 @@ app.add_middleware(
 )
 
 # 라우터 등록
-app.include_router(records.router, prefix="/api/records", tags=["records"])
-app.include_router(test_records.router, prefix="/api/test", tags=["test"])
-app.include_router(interview.router, prefix="/api/interview", tags=["interview"])
+app.include_router(records.router, prefix="/ai/records", tags=["records"])
+app.include_router(test_records.router, prefix="/ai/test", tags=["test"])
+app.include_router(interview.router, prefix="/ai/interview", tags=["interview"])
 
 
 @app.get("/health")
