@@ -28,8 +28,7 @@ class StudentRecord(Base):
     title = Column(String(255), nullable=False)
     s3_key = Column(String(512), nullable=False)
     status = Column(String(20), default="PENDING")  # PENDING, ANALYZING, READY, FAILED
-    created_at = Column(DateTime(timezone=True), server_default=func.now()) 
-    analyzed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     user = relationship("User", back_populates="student_records")
     record_chunks = relationship("RecordChunk", back_populates="record", cascade="all, delete-orphan")
     question_sets = relationship("QuestionSet", back_populates="record", cascade="all, delete-orphan")

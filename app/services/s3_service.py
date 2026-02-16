@@ -8,12 +8,21 @@ logger = logging.getLogger(__name__)
 
 class S3Service:
     def __init__(self):
-        self.s3_client = boto3.client(
-            's3',
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-            region_name=settings.aws_region
-        )
+        # S3 Client 설정 (AWS S3 또는 S3 Compatible API)
+        client_config = {
+            'aws_access_key_id': settings.aws_access_key_id,
+            'aws_secret_access_key': settings.aws_secret_access_key,
+            'region_name': settings.aws_region
+        }
+
+        # S3 Compatible API endpoint 설정 (Oracle Object Storage, MinIO 등)
+        if settings.aws_s3_endpoint:
+            from botocore.config import Config
+            config = Config()
+            client_config['endpoint_url'] = settings.aws_s3_endpoint
+            client_config['config'] = config
+
+        self.s3_client = boto3.client('s3', **client_config)
         self.bucket_name = settings.aws_s3_bucket
 
     def get_file_stream(self, s3_key: str):

@@ -1,13 +1,13 @@
 """실시간 면접 LangGraph 구현
 
 꼬리 질문(Tail Questions) 시스템을 통해 심층적인 면접을 수행합니다.
-상태 저장은 LangGraph의 PostgresSaver Checkpointer가 자동으로 처리합니다.
+상태 저장은 LangGraph의 AsyncPostgresSaver Checkpointer가 자동으로 처리합니다.
 """
 from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from operator import add
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
@@ -81,37 +81,48 @@ class InterviewGraph:
         self.model = "gemini-2.5-flash-lite"
         self.types = types
 
-        # Postgres Checkpointer 초기화
-        self.checkpointer = self._init_checkpointer()
+        # Postgres Checkpointer 초기화 (async lazy)
+        self.checkpointer = None
+        self._pool = None
+        self._graph = None
 
-        # 그래프 빌드 (with checkpointer)
-        self.graph = self._build_graph()
-
-    def _init_checkpointer(self):
-        """Checkpointer 초기화 (PostgresSaver 사용)"""
+    async def _init_checkpointer(self):
+        """Checkpointer 초기화 (AsyncPostgresSaver 사용)"""
         try:
-            from langgraph.checkpoint.postgres import PostgresSaver
-            from app.database import get_langgraph_connection_string
-            
-            # PostgreSQL Checkpointer 사용
-            conn_string = get_langgraph_connection_string()
-            checkpointer = PostgresSaver.from_conn_string(conn_string)
-            
-            # 테이블 생성 (이미 있으면 무시)
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(checkpointer.setup())
-            except RuntimeError:
-                # 이벤트 루프가 없으면 새로 생성
-                asyncio.run(checkpointer.setup())
-            
-            logger.info("PostgresSaver checkpointer initialized successfully")
-            return checkpointer
-            
+            if self.checkpointer is not None:
+                return self.checkpointer
+
+            # database_url을 asyncpg용으로 변환 (postgresql+psycopg2 → postgresql)
+            conn_string = settings.database_url
+            if conn_string.startswith("postgresql+psycopg://"):
+                conn_string = conn_string.replace("postgresql+psycopg://", "postgresql://", 1)
+            elif conn_string.startswith("postgresql+psycopg2://"):
+                conn_string = conn_string.replace("postgresql+psycopg2://", "postgresql://", 1)
+
+            # asyncpg Pool 생성
+            self._pool = await asyncpg.create_pool(conn_string, min_size=1, max_size=10)
+
+            # AsyncPostgresSaver 생성
+            self.checkpointer = AsyncPostgresSaver(self._pool)
+
+            logger.info("AsyncPostgresSaver checkpointer initialized successfully")
+            return self.checkpointer
+
         except Exception as e:
             logger.error(f"Failed to initialize checkpointer: {e}")
             return None
+
+    async def get_graph(self):
+        """그래프 반환 (lazy initialization with checkpointer)"""
+        if self._graph is None:
+            # Checkpointer 초기화 시도
+            if self.checkpointer is None:
+                await self._init_checkpointer()
+
+            # 그래프 빌드
+            self._graph = self._build_graph()
+
+        return self._graph
     
     def _build_graph(self) -> StateGraph:
         """LangGraph 빌드"""
@@ -517,16 +528,23 @@ JSON 형식으로 응답하세요."""
             현재 InterviewState
         """
         try:
+            # Checkpointer 초기화 확인
+            if self.checkpointer is None:
+                await self._init_checkpointer()
+
+            if self.checkpointer is None:
+                raise ValueError("Checkpointer is not available")
+
             config = {"configurable": {"thread_id": thread_id}}
-            
+
             # Checkpointer에서 상태 조회
             state_snapshot = await self.checkpointer.aget(config=config)
-            
+
             if state_snapshot is None:
                 raise ValueError(f"No state found for thread_id: {thread_id}")
-            
+
             return state_snapshot.values
-            
+
         except Exception as e:
             logger.error(f"Error getting state for thread_id {thread_id}: {e}")
             raise
@@ -566,8 +584,9 @@ JSON 형식으로 응답하세요."""
                 state['next_action'] = "wrap_up"
 
             # LangGraph invoke
+            graph = await self.get_graph()
             config = {"configurable": {"thread_id": thread_id}}
-            result_state = await self.graph.ainvoke(state, config=config)
+            result_state = await graph.ainvoke(state, config=config)
             
             # 마지막 AI 메시지(질문) 추출
             next_question = ""

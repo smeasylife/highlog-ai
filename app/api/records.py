@@ -41,6 +41,7 @@ async def create_record(
     try:
         # 1. DB에 생기부 저장 (target_school, target_major, interview_type는 저장하지 않음)
         record = StudentRecord(
+            user_id=current_user.user_id,
             title=request.title,
             s3_key=request.s3Key,
             status="PENDING"
