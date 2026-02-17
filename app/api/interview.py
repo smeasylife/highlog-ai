@@ -12,13 +12,14 @@ import io
 import uuid
 from typing import Dict, Any
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
-from langchain_core.messages import HumanMessage, AIMessage
 
 from app.schemas import (
     InitializeInterviewRequest,
     SimpleChatRequest,
     InterviewChatResponse,
-    AudioInterviewResponse
+    AudioInterviewResponse,
+    InitializeInterviewResponse,
+    InitializeAudioInterviewResponse
 )
 from app.graphs.interview_graph import interview_graph
 from app.core.dependencies import get_current_user, CurrentUser
@@ -30,7 +31,7 @@ router = APIRouter()
 
 # ==================== 면접 초기화 ====================
 
-@router.post("/initialize/text", response_model=InterviewChatResponse)
+@router.post("/initialize/text", response_model=InitializeInterviewResponse)
 async def initialize_interview_text(
     request: InitializeInterviewRequest,
     current_user: CurrentUser = Depends(get_current_user)
@@ -72,7 +73,7 @@ async def initialize_interview_text(
             thread_id=thread_id
         )
 
-        return InterviewChatResponse(
+        return InitializeInterviewResponse(
             next_question=next_question,
             thread_id=thread_id
         )
@@ -82,7 +83,7 @@ async def initialize_interview_text(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/initialize/audio", response_model=AudioInterviewResponse)
+@router.post("/initialize/audio", response_model=InitializeAudioInterviewResponse)
 async def initialize_interview_audio(
     record_id: int = Form(...),
     difficulty: str = Form(...),
@@ -151,7 +152,7 @@ async def initialize_interview_audio(
             logger.info(f"TTS audio URL generated: {audio_url}")
 
         # 5. 결과 반환
-        return AudioInterviewResponse(
+        return InitializeAudioInterviewResponse(
             next_question=next_question,
             audio_url=audio_url,
             thread_id=thread_id
@@ -195,7 +196,7 @@ async def chat_text(
             raise HTTPException(status_code=403, detail="Access denied to this interview")
 
         # Checkpointer에서 상태 조회하여 처리 (record_id는 state에서 추출)
-        next_question = await _process_chat_with_checkpoint(
+        next_question = _process_chat_with_checkpoint(
             user_answer=request.answer,
             response_time=request.response_time,
             thread_id=thread_id
@@ -253,7 +254,7 @@ async def chat_audio(
         logger.info(f"Transcribed text: {text[:100]}...")
 
         # 2. Checkpointer에서 상태 조회하여 처리 (record_id는 state에서 추출)
-        next_question = await _process_chat_with_checkpoint(
+        next_question = _process_chat_with_checkpoint(
             user_answer=text,
             response_time=response_time,
             thread_id=thread_id
@@ -300,15 +301,11 @@ def _process_chat_with_checkpoint(
         # 1. Checkpointer에서 현재 상태 조회
         current_state = interview_graph.get_state(thread_id)
 
-        # 2. 상태에서 record_id 추출
-        record_id = current_state.get('record_id')
-
-        # 3. InterviewGraph 처리
+        # 2. InterviewGraph 처리 (record_id는 state 안에 있음)
         next_question = interview_graph.process_answer(
             state=current_state,
             user_answer=user_answer,
             response_time=response_time,
-            record_id=record_id,
             thread_id=thread_id
         )
 

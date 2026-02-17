@@ -77,9 +77,18 @@ class InterviewChatResponse(BaseModel):
     """면접 챗봇 응답 (간소화)"""
     next_question: str = Field(..., description="다음 질문 텍스트")
     is_finished: bool = Field(False, description="면접 종료 여부")
-    thread_id: Optional[str] = Field(None, description="LangGraph thread ID (초기화 시 반환됨)")
+
+
+class InitializeInterviewResponse(InterviewChatResponse):
+    """면접 초기화 응답 (thread_id 포함)"""
+    thread_id: str = Field(..., description="LangGraph thread ID")
 
 
 class AudioInterviewResponse(InterviewChatResponse):
     """오디오 면접 응답 (음성 URL 포함)"""
     audio_url: Optional[str] = Field(None, description="다음 질문 음성 파일 URL")
+
+
+class InitializeAudioInterviewResponse(AudioInterviewResponse):
+    """오디오 면접 초기화 응답 (thread_id 포함)"""
+    thread_id: str = Field(..., description="LangGraph thread ID")

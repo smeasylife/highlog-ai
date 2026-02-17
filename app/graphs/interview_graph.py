@@ -6,7 +6,6 @@
 from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from operator import add
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.checkpoint.postgres import PostgresSaver
 from pydantic import BaseModel, Field
 from google import genai
@@ -21,6 +20,17 @@ import json
 logger = logging.getLogger(__name__)
 
 
+# ==================== Reducer 함수 정의 ====================
+
+def merge_logs(existing: List[Dict], new: List[Dict]) -> List[Dict]:
+    """answer_log 병합 함수"""
+    if not existing:
+        return new
+    if not new:
+        return existing
+    return existing + new
+
+
 # ==================== State 정의 ====================
 
 class InterviewState(TypedDict):
@@ -32,22 +42,24 @@ class InterviewState(TypedDict):
     interview_stage: str               # [INTRO, MAIN, WRAP_UP]
 
     # 대화 컨텍스트
-    conversation_history: List[BaseMessage]  # 대화 기록
     current_context: List[str]         # 현재 질문/주제와 관련된 학생부 청크 리스트
     current_sub_topic: str             # 현재 진행 중인 세부 주제
     asked_sub_topics: List[str]        # 이미 완료된 세부 주제 리스트
 
-    # 답변 기록 (나중에 분석 API에서 사용)
-    answer_log: List[Dict]             # [{question, answer, response_time, timestamp}]
+    # 답변 기록 (checkpoint에 저장)
+    answer_log: Annotated[List[Dict], merge_logs]
 
     # 내부 상태
     next_action: str                   # [follow_up, new_topic, wrap_up]
     follow_up_count: int               # 현재 주제에 대한 꼬리 질문 횟수
 
-    # 현재 답변 정보 (graph 실행 시 필요)
-    current_user_answer: str           # 현재 사용자 답변
-    current_response_time: int         # 현재 답변 소요 시간
+    # 세션 정보
+    session_id: int                    # InterviewSession ID (데이터베이스 외래키)
     record_id: int                     # 생기부 ID
+
+    # 현재 처리 중인 답변 (checkpoint에 저장하지 않음 - pass through)
+    current_user_answer: str
+    current_response_time: int
 
 
 # ==================== Pydantic 모델 ====================
@@ -142,13 +154,11 @@ class InterviewGraph:
             user_answer = state.get('current_user_answer', '')
             response_time = state.get('current_response_time', 0)
 
-            # 마지막 질문 가져오기
+            # 마지막 질문 가져오기 (answer_log에서)
             last_question = ""
-            if state['conversation_history']:
-                for msg in reversed(state['conversation_history']):
-                    if isinstance(msg, AIMessage):
-                        last_question = msg.content
-                        break
+            answer_log = state.get('answer_log', [])
+            if answer_log:
+                last_question = answer_log[-1].get('question', '')
 
             # 컨텍스트 텍스트 구성
             context_text = "\\n\\n".join(state.get('current_context', []))
@@ -274,15 +284,13 @@ JSON 형식으로 응답하세요."""
         """꼬리 질문 생성"""
         try:
             logger.info(f"Generating follow-up question for: {state.get('current_sub_topic')}")
-            
-            # 마지막 답변 가져오기
+
+            # 마지막 답변 가져오기 (answer_log에서)
             last_answer = ""
-            if state['conversation_history']:
-                for msg in reversed(state['conversation_history']):
-                    if isinstance(msg, HumanMessage):
-                        last_answer = msg.content
-                        break
-            
+            answer_log = state.get('answer_log', [])
+            if answer_log:
+                last_answer = answer_log[-1].get('answer', '')
+
             context_text = "\n\n".join(state.get('current_context', []))
             
             # 꼬리 질문 프롬프트
@@ -327,18 +335,24 @@ JSON 형식으로 응답하세요."""
             )
             
             result = json.loads(response.text)
-            
-            # 질문을 대화 기록에 추가
-            state['conversation_history'].append(AIMessage(content=result['question']))
+
+            # 생성된 질문을 answer_log에 추가
+            from datetime import datetime
+            log_entry = {
+                "question": result['question'],
+                "answer": "",
+                "response_time": 0,
+                "sub_topic": state.get('current_sub_topic', ''),
+                "timestamp": datetime.now().isoformat(),
+                "generated_question": result['question']
+            }
+            state['answer_log'] = state.get('answer_log', []) + [log_entry]
             state['follow_up_count'] = state.get('follow_up_count', 0) + 1
-            
+
             return state
-            
+
         except Exception as e:
             logger.error(f"Error generating follow-up question: {e}")
-            state['conversation_history'].append(
-                AIMessage(content="죄송합니다. 질문 생성 중 오류가 발생했습니다.")
-            )
             return state
     
     def new_question_generator(self, state: InterviewState) -> InterviewState:
@@ -394,26 +408,55 @@ JSON 형식으로 응답하세요."""
             )
             
             result = json.loads(response.text)
-            
-            # 질문을 대화 기록에 추가
-            state['conversation_history'].append(AIMessage(content=result['question']))
-            
+
+            # 생성된 질문을 answer_log에 추가
+            from datetime import datetime
+            log_entry = {
+                "question": result['question'],
+                "answer": "",
+                "response_time": 0,
+                "sub_topic": state.get('current_sub_topic', ''),
+                "timestamp": datetime.now().isoformat(),
+                "generated_question": result['question']
+            }
+            state['answer_log'] = state.get('answer_log', []) + [log_entry]
+
             return state
-            
+
         except Exception as e:
             logger.error(f"Error generating new question: {e}")
-            state['conversation_history'].append(
-                AIMessage(content=f"{state.get('current_sub_topic')} 관련 경험을 말씀해 주시겠습니까?")
-            )
+            # 에러 발생 시 빈 질문 반환
             return state
     
     def wrap_up(self, state: InterviewState) -> InterviewState:
         """면접 종료 및 요약 생성"""
+        db = None
         try:
             logger.info("Generating wrap-up summary")
 
             # 전체 대화 기록 분석 (answer_log 사용)
             answer_log = state.get('answer_log', [])
+
+            # InterviewSession 업데이트 (종료 상태)
+            session_id = state.get('session_id')
+            if session_id:
+                db = SessionLocal()
+                try:
+                    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+                    if session:
+                        # 평균 응답 시간 계산
+                        avg_response_time = 0
+                        if answer_log:
+                            total_time = sum(log.get('response_time', 0) for log in answer_log)
+                            avg_response_time = total_time // len(answer_log)
+
+                        session.status = "COMPLETED"
+                        session.avg_response_time = avg_response_time
+                        session.completed_at = func.now()
+                        db.commit()
+                        logger.info(f"Updated interview session {session_id} to COMPLETED")
+                finally:
+                    db.close()
 
             # 간단한 종료 메시지만 생성 (상세 분석은 analyze_interview_result에서)
             closing_message = f"""면접을 종료합니다. 수고하셨습니다.
@@ -424,16 +467,12 @@ JSON 형식으로 응답하세요."""
 
 상세 분석 결과는 면접 종료 후 확인해주세요."""
 
-            state['conversation_history'].append(AIMessage(content=closing_message))
             state['interview_stage'] = "WRAP_UP"
 
             return state
 
         except Exception as e:
             logger.error(f"Error in wrap_up: {e}")
-            state['conversation_history'].append(
-                AIMessage(content="면접을 종료합니다. 수고하셨습니다.")
-            )
             state['interview_stage'] = "WRAP_UP"
             return state
     
@@ -479,23 +518,30 @@ JSON 형식으로 응답하세요."""
             db.refresh(interview_session)
             logger.info(f"Created interview session: {interview_session.id}")
 
-            # 초기 상태 생성
+            # 초기 상태 생성 (첫 번째 answer_log 항목 미리 추가)
+            from datetime import datetime
+            initial_answer_log = [{
+                "question": "자기소개 부탁드립니다.",
+                "answer": first_answer,
+                "response_time": response_time,
+                "sub_topic": "",
+                "timestamp": datetime.now().isoformat()
+            }]
+
             initial_state: InterviewState = {
                 'difficulty': difficulty,
                 'remaining_time': 600,  # 10분
                 'interview_stage': 'INTRO',
-                'conversation_history': [
-                    AIMessage(content="자기소개 부탁드립니다.")
-                ],
                 'current_context': [],
                 'current_sub_topic': '',
                 'asked_sub_topics': [],
-                'answer_log': [],
+                'answer_log': initial_answer_log,
                 'next_action': '',
                 'follow_up_count': 0,
+                'session_id': interview_session.id,  # 세션 ID 저장
+                'record_id': record_id,
                 'current_user_answer': first_answer,
-                'current_response_time': response_time,
-                'record_id': record_id
+                'current_response_time': response_time
             }
 
             # process_answer 재사용
@@ -530,13 +576,14 @@ JSON 형식으로 응답하세요."""
 
             # PostgresSaver 컨텍스트 매니저 내에서 상태 조회
             with PostgresSaver.from_conn_string(self._conn_string) as checkpointer:
-                # get은 이미 상태 딕셔너리를 직접 반환
-                state = checkpointer.get(config=config)
+                # get_tuple로 전체 튜플 가져오기
+                result = checkpointer.get_tuple(config=config)
 
-                if state is None:
+                if result is None:
                     raise ValueError(f"No state found for thread_id: {thread_id}")
 
-                return state
+                # result.checkpoint['channel_values']에 우리 InterviewState 데이터가 있음
+                return result.checkpoint['channel_values']
 
         except Exception as e:
             logger.error(f"Error getting state for thread_id {thread_id}: {e}")
@@ -562,13 +609,7 @@ JSON 형식으로 응답하세요."""
             str: 다음 질문 텍스트
         """
         try:
-            # 사용자 답변을 대화 기록에 추가
-            state['conversation_history'].append(HumanMessage(content=user_answer))
-
-            # 시간 업데이트
-            state['remaining_time'] -= response_time
-
-            # 현재 답변 정보를 state에 설정
+            # 현재 답변 정보만 state에 설정 (pass-through 필드)
             state['current_user_answer'] = user_answer
             state['current_response_time'] = response_time
 
@@ -578,25 +619,30 @@ JSON 형식으로 응답하세요."""
 
             # PostgresSaver 컨텍스트 내에서 그래프 실행
             with PostgresSaver.from_conn_string(self._conn_string) as checkpointer:
-                # 테이블 생성 (처음 한 번만 필요)
-                checkpointer.setup()
-
                 graph = self._build_workflow().compile(checkpointer=checkpointer)
                 config = {"configurable": {"thread_id": thread_id}}
                 result_state = graph.invoke(state, config=config)
 
-                # 마지막 AI 메시지(질문) 추출
+                # answer_log에서 마지막 질문 추출
                 next_question = ""
-                if result_state['conversation_history']:
-                    for msg in reversed(result_state['conversation_history']):
-                        if isinstance(msg, AIMessage):
-                            next_question = msg.content
+                answer_log = result_state.get('answer_log', [])
+                if answer_log:
+                    # answer_log에 추가된 마지막 질문 사용
+                    # analyzer에서 이미 이전 질문을 저장했음
+                    # 새로 생성된 질문은 result_state의 마지막 항목
+                    for log in reversed(answer_log):
+                        if 'generated_question' in log:
+                            next_question = log['generated_question']
                             break
+
+                    # 없으면 마지막 question 필드 사용
+                    if not next_question:
+                        next_question = answer_log[-1].get('question', '')
 
                 return next_question
 
         except Exception as e:
-            logger.error(f"Error processing answer: {e}")
+            logger.error(f"Error processing answer: {e}", exc_info=True)
             return "죄송합니다. 오류가 발생했습니다. 면접을 종료합니다."
 
     def analyze_interview_result(self, thread_id: str) -> Dict[str, Any]:

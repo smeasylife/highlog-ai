@@ -56,7 +56,28 @@ async def startup_event():
         # 2. 테이블 생성 (이미 있으면 무시)
         Base.metadata.create_all(bind=engine)
 
-        # 3. 누락된 컬럼 추가 및 인덱스 생성
+        # 3. LangGraph checkpoint 테이블 생성 (앱 시작 시 딱 한 번)
+        try:
+            import psycopg
+            from langgraph.checkpoint.postgres import PostgresSaver
+
+            # 연결 문자열 변환 (PostgresSaver용)
+            conn_string = settings.database_url.replace("postgresql+psycopg2://", "postgresql://", 1)
+            conn_string = conn_string.replace("postgresql+psycopg://", "postgresql://", 1)
+
+            # with 문으로 커넥션 생명주기 안전하게 관리
+            with psycopg.connect(conn_string, autocommit=True) as conn:
+                checkpointer = PostgresSaver(conn)
+                checkpointer.setup()
+                # 명시적 커밋 (안전장치)
+                if not conn.closed:
+                    conn.commit()
+
+            logging.info("LangGraph checkpoint tables created/verified")
+        except Exception as e:
+            logging.warning(f"LangGraph checkpoint setup warning: {e}")
+
+        # 4. 누락된 컬럼 추가 및 인덱스 생성
         with engine.connect() as conn:
             # 3-1. record_chunks 테이블에 embedding 컬럼 확인
             result = conn.execute(text("""
