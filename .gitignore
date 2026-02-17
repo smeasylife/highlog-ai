@@ -4,7 +4,7 @@ cat > .gitignore << 'EOF'
 highschool.pdf
 
 # Config
-config.py
+# config.py는 git에 포함됨 (민감한 값은 .env에서 관리)
 
 # Python
 __pycache__/
