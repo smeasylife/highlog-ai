@@ -76,7 +76,6 @@ class SimpleChatRequest(BaseModel):
 class InterviewChatResponse(BaseModel):
     """면접 챗봇 응답 (간소화)"""
     next_question: str = Field(..., description="다음 질문 텍스트")
-    analysis: Optional[Dict] = Field(None, description="실시간 분석 데이터")
     is_finished: bool = Field(False, description="면접 종료 여부")
     thread_id: Optional[str] = Field(None, description="LangGraph thread ID (초기화 시 반환됨)")
 

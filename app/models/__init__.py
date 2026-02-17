@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, String, Text, Integer, Boolean, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, BigInteger, String, Text, Integer, Boolean, DateTime, ForeignKey, JSON, CheckConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
@@ -32,7 +32,6 @@ class StudentRecord(Base):
     user = relationship("User", back_populates="student_records")
     record_chunks = relationship("RecordChunk", back_populates="record", cascade="all, delete-orphan")
     question_sets = relationship("QuestionSet", back_populates="record", cascade="all, delete-orphan")
-
 
 
 class RecordChunk(Base):
@@ -69,6 +68,9 @@ class QuestionSet(Base):
 class Question(Base):
     """생성된 질문 테이블"""
     __tablename__ = "questions"
+    __table_args__ = (
+        CheckConstraint("difficulty IN ('기본', '압박', '심화')", name='questions_difficulty_check'),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     set_id = Column(BigInteger, ForeignKey("question_sets.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -77,7 +79,7 @@ class Question(Base):
     category = Column(String(50), nullable=False, index=True)
 
     # 난이도: 기본, 압박, 심화
-    difficulty = Column(String(20), default='BASIC', nullable=False, index=True)
+    difficulty = Column(String(20), default='기본', nullable=False, index=True)
 
     # 질문 내용
     content = Column(Text, nullable=False)
@@ -103,58 +105,28 @@ class InterviewSession(Base):
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # LangGraph thread ID (unique)
     thread_id = Column(String(255), unique=True, nullable=False, index=True)
-    
+
     # 면접 설정
     difficulty = Column(String(20), default="Normal")  # Easy, Normal, Hard
-    
+
     # 세션 상태
     status = Column(String(20), default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, ABANDONED
-    
+
     # 시간 정보
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     # 통계 정보
     avg_response_time = Column(Integer, nullable=True)  # 초 단위
     total_questions = Column(Integer, default=0)
     total_duration = Column(Integer, nullable=True)  # 전체 소요 시간 (초)
-    
+
     # 최종 결과
     final_report = Column(JSON, nullable=True)
-    
+
     # 관계
     user = relationship("User")
     record = relationship("StudentRecord")
-    id = Column(BigInteger, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
-    
-    # LangGraph thread ID (unique)
-    thread_id = Column(String(255), unique=True, nullable=False, index=True)
-    
-    # 면접 설정
-    difficulty = Column(String(20), default="Normal")  # Easy, Normal, Hard
-    
-    # 세션 상태
-    status = Column(String(20), default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, ABANDONED
-    
-    # 시간 정보
-    started_at = Column(DateTime(timezone=True), server_default=func.now())
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-    
-    # 통계 정보
-    avg_response_time = Column(Integer, nullable=True)  # 초 단위
-    total_questions = Column(Integer, default=0)
-    total_duration = Column(Integer, nullable=True)  # 전체 소요 시간 (초)
-    
-    # 최종 결과
-    final_report = Column(JSON, nullable=True)  # 요약, 강점, 약점, 개선포인트
-    
-    # 관계
-    user = relationship("User")
-    record = relationship("StudentRecord")
-
-

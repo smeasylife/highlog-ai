@@ -63,7 +63,8 @@ async def initialize_interview_text(
         logger.info(f"Generated thread_id: {thread_id}")
 
         # InterviewGraph 초기화 처리 (Checkpointer가 상태 자동 저장)
-        next_question = await interview_graph.initialize_interview(
+        next_question = interview_graph.initialize_interview(
+            user_id=current_user.user_id,
             record_id=request.record_id,
             difficulty=request.difficulty,
             first_answer=request.first_answer,
@@ -72,7 +73,8 @@ async def initialize_interview_text(
         )
 
         return InterviewChatResponse(
-            next_question=next_question
+            next_question=next_question,
+            thread_id=thread_id
         )
 
     except Exception as e:
@@ -130,7 +132,8 @@ async def initialize_interview_audio(
         logger.info(f"Generated thread_id: {thread_id}")
 
         # 3. InterviewGraph 초기화 처리 (Checkpointer가 상태 자동 저장)
-        next_question = await interview_graph.initialize_interview(
+        next_question = interview_graph.initialize_interview(
+            user_id=current_user.user_id,
             record_id=record_id,
             difficulty=difficulty,
             first_answer=first_answer_text,
@@ -150,7 +153,8 @@ async def initialize_interview_audio(
         # 5. 결과 반환
         return AudioInterviewResponse(
             next_question=next_question,
-            audio_url=audio_url
+            audio_url=audio_url,
+            thread_id=thread_id
         )
 
     except Exception as e:
@@ -276,7 +280,7 @@ async def chat_audio(
 
 # ==================== 공통 처리 함수 ====================
 
-async def _process_chat_with_checkpoint(
+def _process_chat_with_checkpoint(
     user_answer: str,
     response_time: int,
     thread_id: str
@@ -294,13 +298,13 @@ async def _process_chat_with_checkpoint(
     """
     try:
         # 1. Checkpointer에서 현재 상태 조회
-        current_state = await interview_graph.get_state(thread_id)
-        
+        current_state = interview_graph.get_state(thread_id)
+
         # 2. 상태에서 record_id 추출
         record_id = current_state.get('record_id')
 
         # 3. InterviewGraph 처리
-        next_question = await interview_graph.process_answer(
+        next_question = interview_graph.process_answer(
             state=current_state,
             user_answer=user_answer,
             response_time=response_time,
@@ -333,73 +337,32 @@ async def get_interview_history(
             - record_title: 생기부 제목
     """
     try:
-        import asyncpg
-        from app.models import StudentRecord
+        from app.models import InterviewSession, StudentRecord
         from app.database import get_db
+        from sqlalchemy.orm import joinedload
 
-        # 체크포인터 테이블에서 사용자의 thread 조회
-        # thread_id 형식: interview_{user_id}_{record_id}_{uuid}
-        conn_string = interview_graph.checkpointer.conn_string
-
-        conn = await asyncpg.connect(conn_string)
         db = next(get_db())
 
         try:
-            # thread_id 패턴으로 필터링
-            pattern = f"interview_{current_user.user_id}_%"
+            # InterviewSession 조회 (user_id로 필터링)
+            sessions = db.query(InterviewSession).filter(
+                InterviewSession.user_id == current_user.user_id
+            ).order_by(InterviewSession.started_at.desc()).all()
 
-            query = """
-                SELECT thread_id
-                FROM checkpoints
-                WHERE thread_id LIKE $1
-                GROUP BY thread_id
-                ORDER BY MAX(thread_id) DESC
-            """
-
-            rows = await conn.fetch(query, pattern)
-
-            # 각 thread의 상태 조회
             history = []
-            for row in rows:
-                thread_id = row['thread_id']
+            for session in sessions:
+                # StudentRecord에서 title 조회
+                record_title = None
+                if session.record:
+                    record_title = session.record.title
 
-                try:
-                    # 체크포인트에서 상태 조회
-                    state = await interview_graph.get_state(thread_id)
-
-                    # record_id를 state에서 추출
-                    record_id = state.get('record_id')
-
-                    # StudentRecord에서 title만 조회
-                    record_title = None
-                    if record_id:
-                        record = db.query(StudentRecord.title).filter(
-                            StudentRecord.id == record_id
-                        ).first()
-                        record_title = record[0] if record else None
-
-                    # answer_log에서 평균 응답 시간 계산
-                    answer_log = state.get('answer_log', [])
-                    if answer_log:
-                        total_time = sum(log.get('response_time', 0) for log in answer_log)
-                        avg_response_time = total_time // len(answer_log)
-                        # 첫 답변의 timestamp를 started_at으로 사용
-                        started_at = answer_log[0].get('timestamp') if answer_log[0].get('timestamp') else None
-                    else:
-                        avg_response_time = 0
-                        started_at = None
-
-                    # 메타데이터 추출
-                    history.append({
-                        "thread_id": thread_id,
-                        "difficulty": state.get('difficulty'),
-                        "avg_response_time": avg_response_time,
-                        "started_at": started_at,
-                        "record_title": record_title
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to load state for thread {thread_id}: {e}")
-                    continue
+                history.append({
+                    "thread_id": session.thread_id,
+                    "difficulty": session.difficulty,
+                    "avg_response_time": session.avg_response_time,
+                    "started_at": session.started_at.isoformat() if session.started_at else None,
+                    "record_title": record_title
+                })
 
             logger.info(f"Retrieved {len(history)} interview sessions for user {current_user.user_id}")
 
@@ -409,9 +372,8 @@ async def get_interview_history(
             }
 
         finally:
-            await conn.close()
             db.close()
-        
+
     except Exception as e:
         logger.error(f"Error retrieving interview history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -448,7 +410,7 @@ async def get_interview_logs(
             raise HTTPException(status_code=403, detail="Access denied to this interview")
 
         # 상태 조회
-        state = await interview_graph.get_state(thread_id)
+        state = interview_graph.get_state(thread_id)
 
         # answer_log 반환
         return {
@@ -502,7 +464,7 @@ async def analyze_interview_result(
             raise HTTPException(status_code=403, detail="Access denied to this interview")
 
         # 분석 실행
-        result = await interview_graph.analyze_interview_result(thread_id)
+        result = interview_graph.analyze_interview_result(thread_id)
 
         if "error" in result:
             raise HTTPException(status_code=404, detail=result.get("message"))

@@ -7,14 +7,16 @@ from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from operator import add
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.checkpoint.postgres import PostgresSaver
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 from config import settings
+from app.database import SessionLocal
+from app.models import InterviewSession
+from sqlalchemy.sql import func
 import logging
 import json
-import asyncpg
 
 logger = logging.getLogger(__name__)
 
@@ -81,51 +83,25 @@ class InterviewGraph:
         self.model = "gemini-2.5-flash-lite"
         self.types = types
 
-        # Postgres Checkpointer 초기화 (async lazy)
-        self.checkpointer = None
-        self._pool = None
+        # database_url 저장 (PostgresSaver용)
+        # postgresql+psycopg2:// → postgresql://
+        # postgresql+psycopg:// → postgresql://
+        self._conn_string = settings.database_url
+        self._conn_string = self._conn_string.replace("postgresql+psycopg2://", "postgresql://", 1)
+        self._conn_string = self._conn_string.replace("postgresql+psycopg://", "postgresql://", 1)
+
         self._graph = None
 
-    async def _init_checkpointer(self):
-        """Checkpointer 초기화 (AsyncPostgresSaver 사용)"""
-        try:
-            if self.checkpointer is not None:
-                return self.checkpointer
-
-            # database_url을 asyncpg용으로 변환 (postgresql+psycopg2 → postgresql)
-            conn_string = settings.database_url
-            if conn_string.startswith("postgresql+psycopg://"):
-                conn_string = conn_string.replace("postgresql+psycopg://", "postgresql://", 1)
-            elif conn_string.startswith("postgresql+psycopg2://"):
-                conn_string = conn_string.replace("postgresql+psycopg2://", "postgresql://", 1)
-
-            # asyncpg Pool 생성
-            self._pool = await asyncpg.create_pool(conn_string, min_size=1, max_size=10)
-
-            # AsyncPostgresSaver 생성
-            self.checkpointer = AsyncPostgresSaver(self._pool)
-
-            logger.info("AsyncPostgresSaver checkpointer initialized successfully")
-            return self.checkpointer
-
-        except Exception as e:
-            logger.error(f"Failed to initialize checkpointer: {e}")
-            return None
-
-    async def get_graph(self):
-        """그래프 반환 (lazy initialization with checkpointer)"""
+    def get_graph(self):
+        """그래프 반환 (checkpointer 없이 컴파일)"""
         if self._graph is None:
-            # Checkpointer 초기화 시도
-            if self.checkpointer is None:
-                await self._init_checkpointer()
-
-            # 그래프 빌드
-            self._graph = self._build_graph()
+            # 그래프 빌드 및 컴파일 (checkpointer 없이)
+            self._graph = self._build_workflow().compile()
 
         return self._graph
-    
-    def _build_graph(self) -> StateGraph:
-        """LangGraph 빌드"""
+
+    def _build_workflow(self) -> StateGraph:
+        """Workflow 빌드 (컴파일 전)"""
         workflow = StateGraph(InterviewState)
 
         # 노드 추가
@@ -155,10 +131,9 @@ class InterviewGraph:
         workflow.add_edge("new_question_generator", END)
         workflow.add_edge("wrap_up", END)
 
-        # Checkpointer와 함께 컴파일
-        return workflow.compile(checkpointer=self.checkpointer)
-    
-    async def analyzer(self, state: InterviewState) -> InterviewState:
+        return workflow
+
+    def analyzer(self, state: InterviewState) -> InterviewState:
         """답변 분석 및 다음 액션 결정 (꼬리질문 여부만 판단)"""
         try:
             logger.info(f"Analyzing answer for topic: {state.get('current_sub_topic', 'INTRO')}")
@@ -233,9 +208,10 @@ JSON 형식으로 응답하세요."""
                 "sub_topic": state.get('current_sub_topic', ''),
                 "timestamp": datetime.now().isoformat()
             }
-            
-            state['answer_log'].append(log_entry)
-            
+
+            # 리스트에 새 항목 추가 (새 리스트 생성)
+            state['answer_log'] = state.get('answer_log', []) + [log_entry]
+
             # 다음 액션 저장
             state['next_action'] = result['action']
             
@@ -251,7 +227,7 @@ JSON 형식으로 응답하세요."""
         """다음 액션 결정 (Conditional Edge)"""
         return state.get('next_action', 'wrap_up')
     
-    async def retrieve_new_topic(
+    def retrieve_new_topic(
         self, 
         state: InterviewState
     ) -> InterviewState:
@@ -277,7 +253,7 @@ JSON 형식으로 응답하세요."""
             # 벡터 DB에서 관련 청크 검색
             from app.services.vector_service import vector_service
             
-            chunks = await vector_service.search_chunks_by_topic(
+            chunks = vector_service.search_chunks_by_topic(
                 record_id=state['record_id'],
                 topic=new_topic
             )
@@ -294,7 +270,7 @@ JSON 형식으로 응답하세요."""
             state['next_action'] = "wrap_up"
             return state
     
-    async def follow_up_generator(self, state: InterviewState) -> InterviewState:
+    def follow_up_generator(self, state: InterviewState) -> InterviewState:
         """꼬리 질문 생성"""
         try:
             logger.info(f"Generating follow-up question for: {state.get('current_sub_topic')}")
@@ -365,7 +341,7 @@ JSON 형식으로 응답하세요."""
             )
             return state
     
-    async def new_question_generator(self, state: InterviewState) -> InterviewState:
+    def new_question_generator(self, state: InterviewState) -> InterviewState:
         """새로운 주제 첫 질문 생성"""
         try:
             logger.info(f"Generating first question for topic: {state.get('current_sub_topic')}")
@@ -431,7 +407,7 @@ JSON 형식으로 응답하세요."""
             )
             return state
     
-    async def wrap_up(self, state: InterviewState) -> InterviewState:
+    def wrap_up(self, state: InterviewState) -> InterviewState:
         """면접 종료 및 요약 생성"""
         try:
             logger.info("Generating wrap-up summary")
@@ -462,8 +438,9 @@ JSON 형식으로 응답하세요."""
             return state
     
 
-    async def initialize_interview(
+    def initialize_interview(
         self,
+        user_id: int,
         record_id: int,
         difficulty: str,
         first_answer: str,
@@ -474,6 +451,7 @@ JSON 형식으로 응답하세요."""
         면접 초기화 (첫 답변 처리)
 
         Args:
+            user_id: 사용자 ID
             record_id: 생기부 ID
             difficulty: 난이도 (Easy, Normal, Hard)
             first_answer: 첫 답변 (자기소개)
@@ -483,8 +461,23 @@ JSON 형식으로 응답하세요."""
         Returns:
             Dict with next_question, updated_state, is_finished
         """
+        db = None
         try:
             logger.info(f"Initializing interview for record {record_id}, difficulty: {difficulty}")
+
+            # InterviewSession 생성
+            db = SessionLocal()
+            interview_session = InterviewSession(
+                user_id=user_id,
+                record_id=record_id,
+                thread_id=thread_id,
+                difficulty=difficulty,
+                status="IN_PROGRESS"
+            )
+            db.add(interview_session)
+            db.commit()
+            db.refresh(interview_session)
+            logger.info(f"Created interview session: {interview_session.id}")
 
             # 초기 상태 생성
             initial_state: InterviewState = {
@@ -506,7 +499,7 @@ JSON 형식으로 응답하세요."""
             }
 
             # process_answer 재사용
-            return await self.process_answer(
+            return self.process_answer(
                 state=initial_state,
                 user_answer=first_answer,
                 response_time=response_time,
@@ -515,9 +508,14 @@ JSON 형식으로 응답하세요."""
 
         except Exception as e:
             logger.error(f"Error initializing interview: {e}")
+            if db:
+                db.rollback()
             raise
+        finally:
+            if db:
+                db.close()
 
-    async def get_state(self, thread_id: str) -> InterviewState:
+    def get_state(self, thread_id: str) -> InterviewState:
         """
         thread_id로 현재 상태 조회
 
@@ -528,28 +526,23 @@ JSON 형식으로 응답하세요."""
             현재 InterviewState
         """
         try:
-            # Checkpointer 초기화 확인
-            if self.checkpointer is None:
-                await self._init_checkpointer()
-
-            if self.checkpointer is None:
-                raise ValueError("Checkpointer is not available")
-
             config = {"configurable": {"thread_id": thread_id}}
 
-            # Checkpointer에서 상태 조회
-            state_snapshot = await self.checkpointer.aget(config=config)
+            # PostgresSaver 컨텍스트 매니저 내에서 상태 조회
+            with PostgresSaver.from_conn_string(self._conn_string) as checkpointer:
+                # get은 이미 상태 딕셔너리를 직접 반환
+                state = checkpointer.get(config=config)
 
-            if state_snapshot is None:
-                raise ValueError(f"No state found for thread_id: {thread_id}")
+                if state is None:
+                    raise ValueError(f"No state found for thread_id: {thread_id}")
 
-            return state_snapshot.values
+                return state
 
         except Exception as e:
             logger.error(f"Error getting state for thread_id {thread_id}: {e}")
             raise
 
-    async def process_answer(
+    def process_answer(
         self,
         state: InterviewState,
         user_answer: str,
@@ -583,26 +576,30 @@ JSON 형식으로 응답하세요."""
             if state['remaining_time'] < 30:
                 state['next_action'] = "wrap_up"
 
-            # LangGraph invoke
-            graph = await self.get_graph()
-            config = {"configurable": {"thread_id": thread_id}}
-            result_state = await graph.ainvoke(state, config=config)
-            
-            # 마지막 AI 메시지(질문) 추출
-            next_question = ""
-            if result_state['conversation_history']:
-                for msg in reversed(result_state['conversation_history']):
-                    if isinstance(msg, AIMessage):
-                        next_question = msg.content
-                        break
+            # PostgresSaver 컨텍스트 내에서 그래프 실행
+            with PostgresSaver.from_conn_string(self._conn_string) as checkpointer:
+                # 테이블 생성 (처음 한 번만 필요)
+                checkpointer.setup()
 
-            return next_question
+                graph = self._build_workflow().compile(checkpointer=checkpointer)
+                config = {"configurable": {"thread_id": thread_id}}
+                result_state = graph.invoke(state, config=config)
+
+                # 마지막 AI 메시지(질문) 추출
+                next_question = ""
+                if result_state['conversation_history']:
+                    for msg in reversed(result_state['conversation_history']):
+                        if isinstance(msg, AIMessage):
+                            next_question = msg.content
+                            break
+
+                return next_question
 
         except Exception as e:
             logger.error(f"Error processing answer: {e}")
             return "죄송합니다. 오류가 발생했습니다. 면접을 종료합니다."
 
-    async def analyze_interview_result(self, thread_id: str) -> Dict[str, Any]:
+    def analyze_interview_result(self, thread_id: str) -> Dict[str, Any]:
         """
         면접 결과 분석 및 종합 리포트 생성
 
@@ -612,11 +609,12 @@ JSON 형식으로 응답하세요."""
         Returns:
             종합 분석 리포트
         """
+        db = None
         try:
             logger.info(f"Analyzing interview result for thread_id: {thread_id}")
 
             # 1. 상태 조회
-            state = await self.get_state(thread_id)
+            state = self.get_state(thread_id)
 
             # 2. answer_log에서 대화 요약 추출
             answer_log = state.get('answer_log', [])
@@ -627,7 +625,14 @@ JSON 형식으로 응답하세요."""
                     "message": "면접 데이터가 없습니다."
                 }
 
-            # 3. 대화 요약 생성 (전체 답변 사용)
+            # 3. 평균 응답 시간 계산
+            total_response_time = sum(log.get('response_time', 0) for log in answer_log)
+            avg_response_time = total_response_time // len(answer_log) if answer_log else 0
+
+            # 4. 전체 소요 시간 계산
+            total_duration = 600 - state.get('remaining_time', 600)
+
+            # 5. 대화 요약 생성 (전체 답변 사용)
             conversation_summary = []
             for log in answer_log:
                 conversation_summary.append(f"Q: {log['question']}")
@@ -718,7 +723,23 @@ JSON 형식으로 응답하세요."""
 
             result = json.loads(response.text)
 
-            # 9. 결과 반환
+            # 9. InterviewSession 업데이트
+            db = SessionLocal()
+            interview_session = db.query(InterviewSession).filter(
+                InterviewSession.thread_id == thread_id
+            ).first()
+
+            if interview_session:
+                interview_session.status = "COMPLETED"
+                interview_session.completed_at = func.now()
+                interview_session.avg_response_time = avg_response_time
+                interview_session.total_questions = len(answer_log)
+                interview_session.total_duration = total_duration
+                interview_session.final_report = result
+                db.commit()
+                logger.info(f"Updated interview session {interview_session.id} to COMPLETED")
+
+            # 10. 결과 반환
             return {
                 "scores": result.get("scores", {}),
                 "strength_tags": result.get("strength_tags", []),
@@ -728,10 +749,15 @@ JSON 형식으로 응답하세요."""
 
         except Exception as e:
             logger.error(f"Error analyzing interview result: {e}")
+            if db:
+                db.rollback()
             return {
                 "error": str(e),
                 "message": "분석 중 오류가 발생했습니다."
             }
+        finally:
+            if db:
+                db.close()
 
 
 # 싱글톤 인스턴스
