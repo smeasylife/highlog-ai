@@ -384,7 +384,7 @@ async def get_interview_logs(
     current_user: CurrentUser = Depends(get_current_user)
 ):
     """
-    특정 면접의 대화 기록 반환
+    특정 면접의 대화 기록 반환 (InterviewSession에서 조회)
 
     Args:
         thread_id: 면접 thread ID
@@ -400,20 +400,34 @@ async def get_interview_logs(
                 - sub_topic: 주제
     """
     try:
-        # thread_id에서 user_id 추출하여 권한 확인
-        parts = thread_id.split('_')
-        if len(parts) < 2 or parts[1] != str(current_user.user_id):
-            raise HTTPException(status_code=403, detail="Access denied to this interview")
+        from app.database import get_db
+        from app.models import InterviewSession
 
-        # 상태 조회
-        state = interview_graph.get_state(thread_id)
+        db = next(get_db())
 
-        # answer_log 반환
-        return {
-            "thread_id": thread_id,
-            "difficulty": state.get('difficulty'),
-            "logs": state.get('answer_log', [])
-        }
+        try:
+            # thread_id에서 user_id 추출하여 권한 확인
+            parts = thread_id.split('_')
+            if len(parts) < 2 or parts[1] != str(current_user.user_id):
+                raise HTTPException(status_code=403, detail="Access denied to this interview")
+
+            # InterviewSession 조회
+            interview_session = db.query(InterviewSession).filter(
+                InterviewSession.thread_id == thread_id
+            ).first()
+
+            if not interview_session:
+                raise HTTPException(status_code=404, detail="면접을 찾을 수 없습니다.")
+
+            # interview_logs 반환
+            return {
+                "thread_id": thread_id,
+                "difficulty": interview_session.difficulty,
+                "logs": interview_session.interview_logs if interview_session.interview_logs else []
+            }
+
+        finally:
+            db.close()
 
     except HTTPException:
         raise

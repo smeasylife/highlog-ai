@@ -124,6 +124,10 @@ class InterviewSession(Base):
     total_questions = Column(Integer, default=0)
     total_duration = Column(Integer, nullable=True)  # 전체 소요 시간 (초)
 
+    # 대화 로그 (JSONB) - 질문, 답변, 응답 시간 저장
+    interview_logs = Column(JSON, nullable=True)
+    # 예: [{"question": "...", "answer": "...", "response_time": 45, "sub_topic": "..."}, ...]
+
     # 최종 결과
     final_report = Column(JSON, nullable=True)
 

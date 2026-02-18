@@ -395,7 +395,7 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
         record_id: int,
         topic: str,
         db: Session = None
-    ) -> List[str]:
+    ) -> List[int]:
         """
         주제에 따라 관련 청크를 pgvector 유사도 검색으로 찾기
 
@@ -405,7 +405,7 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             db: 데이터베이스 세션 (외부에서 주입)
 
         Returns:
-            관련 청크 텍스트 리스트 (유사도 순 상위 3개)
+            관련 청크 ID 리스트 (유사도 순 상위 3개)
         """
         try:
             from app.database import get_db
@@ -424,10 +424,10 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
                 loop = asyncio.get_event_loop()
                 query_embedding = loop.run_until_complete(self._embed_text(topic))
 
-                # 2. pgvector 코사인 유사도 검색 (명시적 타입 캐스팅)
+                # 2. pgvector 코사인 유사도 검색 (ID만 반환)
                 # <-> 연산자: 코사인 거리 (작을수록 유사)
                 query = text("""
-                    SELECT chunk_text
+                    SELECT id
                     FROM record_chunks
                     WHERE record_id = :record_id
                     ORDER BY embedding <=> cast(:embedding as vector)
@@ -443,10 +443,10 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
                 )
 
                 rows = result.fetchall()
-                chunks = [row[0] for row in rows]
+                chunk_ids = [row[0] for row in rows]
 
-                logger.info(f"Retrieved {len(chunks)} chunks for topic '{topic}' using vector similarity")
-                return chunks
+                logger.info(f"Retrieved {len(chunk_ids)} chunk IDs for topic '{topic}' using vector similarity")
+                return chunk_ids
 
             finally:
                 if should_close:

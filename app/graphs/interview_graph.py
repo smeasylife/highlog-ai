@@ -42,7 +42,7 @@ class InterviewState(TypedDict):
     interview_stage: str               # [INTRO, MAIN, WRAP_UP]
 
     # 대화 컨텍스트
-    current_context: List[str]         # 현재 질문/주제와 관련된 학생부 청크 리스트
+    current_context: List[int]         # 현재 질문/주제와 관련된 학생부 청크 ID 리스트
     current_sub_topic: str             # 현재 진행 중인 세부 주제
     asked_sub_topics: List[str]        # 이미 완료된 세부 주제 리스트
 
@@ -145,6 +145,7 @@ class InterviewGraph:
 
     def analyzer(self, state: InterviewState) -> InterviewState:
         """답변 분석 및 다음 액션 결정 (꼬리질문 여부만 판단)"""
+        db = None
         try:
             logger.info(f"Analyzing answer for topic: {state.get('current_sub_topic', 'INTRO')}")
 
@@ -166,6 +167,10 @@ class InterviewGraph:
                     "sub_topic": state.get('current_sub_topic', '')
                 }
                 state['answer_log'] = state.get('answer_log', []) + [log_entry]
+
+                # InterviewSession에도 로그 저장
+                self._save_interview_log(state, log_entry)
+
                 return state
 
             # 현재 답변 정보 가져오기
@@ -178,8 +183,9 @@ class InterviewGraph:
             if answer_log:
                 last_question = answer_log[-1].get('question', '')
 
-            # 컨텍스트 텍스트 구성
-            context_text = "\\n\\n".join(state.get('current_context', []))
+            # ID 리스트로 텍스트 조회
+            context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
+            context_text = "\\n\\n".join(context_chunks)
 
             # 프롬프트 구성 (고등학생 면접 맞춤)
             prompt = f"""당신은 대학 입시 면접관입니다. 학생의 답변을 보고 다음 단계를 결정하세요.
@@ -243,16 +249,24 @@ JSON 형식으로 응답하세요."""
             # 리스트에 새 항목 추가 (새 리스트 생성)
             state['answer_log'] = state.get('answer_log', []) + [log_entry]
 
+            # InterviewSession에도 로그 저장
+            self._save_interview_log(state, log_entry)
+
             # 다음 액션 저장
             state['next_action'] = result['action']
 
             logger.info(f"Analysis complete: {result['action']}")
             return state
-            
+
         except Exception as e:
+            import traceback
             logger.error(f"Error in analyzer: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
             state['next_action'] = "wrap_up"
             return state
+        finally:
+            if db:
+                db.close()
     
     def decide_next_action(self, state: InterviewState) -> str:
         """다음 액션 결정 (Conditional Edge)"""
@@ -320,8 +334,10 @@ JSON 형식으로 응답하세요."""
             if answer_log:
                 last_answer = answer_log[-1].get('answer', '')
 
-            context_text = "\n\n".join(state.get('current_context', []))
-            
+            # ID 리스트로 텍스트 조회
+            context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
+            context_text = "\\n\\n".join(context_chunks)
+
             # 꼬리 질문 프롬프트
             prompt = f"""당신은 대학 입시 면접관입니다. 학생의 답변에 대해 꼬리 질문을 생성하세요.
 
@@ -395,9 +411,11 @@ JSON 형식으로 응답하세요."""
         """새로운 주제 첫 질문 생성"""
         try:
             logger.info(f"Generating first question for topic: {state.get('current_sub_topic')}")
-            
-            context_text = "\n\n".join(state.get('current_context', []))
-            
+
+            # ID 리스트로 텍스트 조회
+            context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
+            context_text = "\n\n".join(context_chunks)
+
             # 첫 질문 프롬프트
             prompt = f"""당신은 대학 입시 면접관입니다. 새로운 주제에 대한 첫 질문을 생성하세요.
 
@@ -543,7 +561,13 @@ JSON 형식으로 응답하세요."""
                 record_id=record_id,
                 thread_id=thread_id,
                 difficulty=difficulty,
-                status="IN_PROGRESS"
+                status="IN_PROGRESS",
+                interview_logs=[{  # 첫 로그 저장
+                    "question": "자기소개 부탁드립니다.",
+                    "answer": first_answer,
+                    "response_time": response_time,
+                    "sub_topic": ""
+                }]
             )
             db.add(interview_session)
             db.commit()
@@ -691,11 +715,23 @@ JSON 형식으로 응답하세요."""
         try:
             logger.info(f"Analyzing interview result for thread_id: {thread_id}")
 
-            # 1. 상태 조회
-            state = self.get_state(thread_id)
+            # 1. DB에서 직접 InterviewSession 조회 (checkpoint 사용 안 함)
+            db = SessionLocal()
+            interview_session = db.query(InterviewSession).filter(
+                InterviewSession.thread_id == thread_id
+            ).first()
 
-            # 2. answer_log에서 대화 요약 추출
-            answer_log = state.get('answer_log', [])
+            if not interview_session:
+                return {
+                    "error": "No interview data found",
+                    "message": "면접 데이터가 없습니다."
+                }
+
+            # 2. InterviewSession에서 데이터 추출
+            answer_log = interview_session.interview_logs if interview_session.interview_logs else []
+            difficulty = interview_session.difficulty
+            avg_response_time = interview_session.avg_response_time or 0
+            total_duration = interview_session.total_duration or 0
 
             if not answer_log:
                 return {
@@ -703,29 +739,29 @@ JSON 형식으로 응답하세요."""
                     "message": "면접 데이터가 없습니다."
                 }
 
-            # 3. 평균 응답 시간 계산
-            total_response_time = sum(log.get('response_time', 0) for log in answer_log)
-            avg_response_time = total_response_time // len(answer_log) if answer_log else 0
+            logger.info(f"Found {len(answer_log)} logs from DB for analysis")
 
-            # 4. 전체 소요 시간 계산
-            total_duration = 600 - state.get('remaining_time', 600)
-
-            # 5. 대화 요약 생성 (전체 답변 사용)
+            # 3. 대화 요약 생성 (전체 답변 사용 - 답변 길이 제한)
             conversation_summary = []
             for log in answer_log:
-                conversation_summary.append(f"Q: {log['question']}")
-                conversation_summary.append(f"A: {log['answer']} (소요시간: {log['response_time']}초)")
+                # 답변이 너무 길면 자르기
+                answer = log.get('answer', '')
+                if len(answer) > 500:
+                    answer = answer[:500] + "... (생략)"
+
+                conversation_summary.append(f"Q: {log.get('question', '')}")
+                conversation_summary.append(f"A: {answer} (소요시간: {log.get('response_time', 0)}초)")
 
             summary_text = "\n".join(conversation_summary)
 
-            # 6. AI 분석 프롬프트
+            # 4. AI 분석 프롬프트 (답변 길이 제한됨)
             prompt = f"""당신은 대학 입시 면접관입니다. 면접 종료 후 종합 평가를 생성하세요.
 
-**면접 난이도**: {state['difficulty']}
+**면접 난이도**: {difficulty}
 **총 답변 수**: {len(answer_log)}
 **평균 응답 시간**: {avg_response_time}초
 
-**전체 대화 내용**:
+**전체 대화 내용** (답변은 500자로 요약됨):
 {summary_text}
 
 **점수 산정 기준**:
@@ -748,7 +784,7 @@ JSON 형식으로 응답하세요."""
 
 각 답변에 대해 질문 내용, 답변 시간, 평가, 개선 포인트, 보완 필요 항목을 분석하세요."""
 
-            # 7. JSON 스키마
+            # 5. JSON 스키마
             schema = self.types.Schema(
                 type=self.types.Type.OBJECT,
                 properties={
@@ -801,23 +837,17 @@ JSON 형식으로 응답하세요."""
 
             result = json.loads(response.text)
 
-            # 9. InterviewSession 업데이트
-            db = SessionLocal()
-            interview_session = db.query(InterviewSession).filter(
-                InterviewSession.thread_id == thread_id
-            ).first()
+            # 6. InterviewSession 업데이트 (같은 db 사용)
+            interview_session.status = "COMPLETED"
+            interview_session.completed_at = func.now()
+            interview_session.avg_response_time = avg_response_time
+            interview_session.total_questions = len(answer_log)
+            interview_session.total_duration = total_duration
+            interview_session.final_report = result
+            db.commit()
+            logger.info(f"Updated interview session {interview_session.id} to COMPLETED")
 
-            if interview_session:
-                interview_session.status = "COMPLETED"
-                interview_session.completed_at = func.now()
-                interview_session.avg_response_time = avg_response_time
-                interview_session.total_questions = len(answer_log)
-                interview_session.total_duration = total_duration
-                interview_session.final_report = result
-                db.commit()
-                logger.info(f"Updated interview session {interview_session.id} to COMPLETED")
-
-            # 10. 결과 반환
+            # 7. 결과 반환
             return {
                 "scores": result.get("scores", {}),
                 "strength_tags": result.get("strength_tags", []),
@@ -833,6 +863,67 @@ JSON 형식으로 응답하세요."""
                 "error": str(e),
                 "message": "분석 중 오류가 발생했습니다."
             }
+        finally:
+            if db:
+                db.close()
+
+    def _get_chunks_by_ids(self, chunk_ids: List[int]) -> List[str]:
+        """청크 ID 리스트로 텍스트 조회
+
+        Args:
+            chunk_ids: 청크 ID 리스트
+
+        Returns:
+            청크 텍스트 리스트
+        """
+        if not chunk_ids:
+            return []
+
+        db = None
+        try:
+            db = SessionLocal()
+            from app.models import RecordChunk
+
+            chunks = db.query(RecordChunk.chunk_text).filter(
+                RecordChunk.id.in_(chunk_ids)
+            ).all()
+
+            return [chunk[0] for chunk in chunks]
+
+        except Exception as e:
+            logger.error(f"Error getting chunks by ids: {e}")
+            return []
+        finally:
+            if db:
+                db.close()
+
+    def _save_interview_log(self, state: InterviewState, log_entry: Dict[str, Any]):
+        """InterviewSession에 대화 로그 저장
+
+        Args:
+            state: 현재 면접 상태
+            log_entry: 저장할 로그 엔트리
+        """
+        db = None
+        try:
+            db = SessionLocal()
+            session_id = state.get('session_id')
+
+            if session_id:
+                interview_session = db.query(InterviewSession).filter(
+                    InterviewSession.id == session_id
+                ).first()
+
+                if interview_session:
+                    # 기존 로그 가져오기
+                    logs = interview_session.interview_logs if interview_session.interview_logs else []
+                    logs.append(log_entry)
+                    interview_session.interview_logs = logs
+                    db.commit()
+                    logger.debug(f"Saved log to interview_session {session_id}")
+
+        except Exception as e:
+            logger.error(f"Error saving interview log: {e}")
         finally:
             if db:
                 db.close()
