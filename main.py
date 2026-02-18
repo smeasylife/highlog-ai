@@ -36,8 +36,9 @@ app.add_middleware(
 )
 
 # 라우터 등록
+# test_records 라우터는 제외 (docs에서 숨김)
 app.include_router(records.router, prefix="/ai/records", tags=["records"])
-app.include_router(test_records.router, prefix="/ai/test", tags=["test"])
+# app.include_router(test_records.router, prefix="/ai/test", tags=["test"])  # 주석 처리
 app.include_router(interview.router, prefix="/ai/interview", tags=["interview"])
 
 # Swagger UI 접근 경로 추가 (/ai/docs)

@@ -67,52 +67,7 @@ async def create_record(
         raise HTTPException(status_code=500, detail=f"생기부 등록 중 오류가 발생했습니다: {str(e)}")
 
 
-@router.post("/{record_id}/vectorize")
-async def vectorize_record(
-    record_id: int,
-    current_user: CurrentUser = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    생기부 벡터화 엔드포인트 (Upload 버튼 클릭 시 호출)
-
-    SSE 스트리밍으로 실시간 진행률 전송
-
-    워크플로우:
-    1. S3에서 PDF → 이미지 변환
-    2. Gemini 2.5 Flash-Lite로 카테고리별 청킹
-    3. Embedding (text-multilingual-embedding-002)
-    4. PostgreSQL의 record_chunks 테이블에 저장
-    5. student_records 테이블의 상태를 READY로 변경
-    """
-    try:
-        # 1. 생기부 조회
-        record = db.query(StudentRecord).filter(
-            StudentRecord.id == record_id
-        ).first()
-
-        if not record:
-            raise HTTPException(status_code=404, detail="생기부를 찾을 수 없습니다.")
-
-        if record.status == "READY":
-            raise HTTPException(status_code=409, detail="이미 벡터화가 완료되었습니다.")
-
-        # 2. SSE 응답 반환
-        return StreamingResponse(
-            vectorization_stream(record, db),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"
-            }
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error starting vectorization: {e}")
-        raise HTTPException(status_code=500, detail="벡터화 시작 중 오류가 발생했습니다.")
+# vectorize 엔드포인트 삭제 - 이제 자동으로 처리됨
 
 
 async def vectorization_stream(record: StudentRecord, db: Session):

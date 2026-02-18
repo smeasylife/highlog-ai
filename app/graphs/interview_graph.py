@@ -92,7 +92,7 @@ class InterviewGraph:
     def __init__(self):
         # Google GenAI 클라이언트 초기화
         self.client = genai.Client(api_key=settings.google_api_key)
-        self.model = "gemini-2.5-flash-lite"
+        self.model = "gemini-2.5-flash"  # Free Tier 무제한 (Lite는 하루 20회 제한)
         self.types = types
 
         # database_url 저장 (PostgresSaver용)
@@ -352,7 +352,18 @@ JSON 형식으로 응답하세요."""
             return state
 
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Error generating follow-up question: {e}")
+
+            # 429 할당량 초과 에러 처리
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                state['error'] = "API 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요."
+                state['is_finished'] = True
+                return state
+
+            # 그 외 에러
+            state['error'] = f"면접 진행 중 오류가 발생했습니다: {error_msg}"
+            state['is_finished'] = True
             return state
     
     def new_question_generator(self, state: InterviewState) -> InterviewState:
@@ -642,8 +653,15 @@ JSON 형식으로 응답하세요."""
                 return next_question
 
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Error processing answer: {e}", exc_info=True)
-            return "죄송합니다. 오류가 발생했습니다. 면접을 종료합니다."
+
+            # 429 할당량 초과 에러
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                raise Exception("API_QUOTA_EXCEEDED: Google Gemini API 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요.")
+
+            # 그 외 에러
+            raise Exception(f"면접 진행 중 오류가 발생했습니다: {error_msg}")
 
     def analyze_interview_result(self, thread_id: str) -> Dict[str, Any]:
         """

@@ -62,7 +62,7 @@ class QuestionGenerationGraph:
     def __init__(self):
         # Google GenAI 클라이언트 초기화
         self.client = genai.Client(api_key=settings.google_api_key)
-        self.model = "gemini-2.5-flash-lite"
+        self.model = "gemini-2.5-flash"  # Free Tier 무제한 (Lite는 하루 20회 제한)
         self.types = types
 
         # 그래프 빌드
