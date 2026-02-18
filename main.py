@@ -40,6 +40,21 @@ app.include_router(records.router, prefix="/ai/records", tags=["records"])
 app.include_router(test_records.router, prefix="/ai/test", tags=["test"])
 app.include_router(interview.router, prefix="/ai/interview", tags=["interview"])
 
+# Swagger UI 접근 경로 추가 (/ai/docs)
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
+
+@app.get("/ai/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    return get_swagger_ui_html(
+        openapi_url="/ai/openapi.json",
+        title="API Docs"
+    )
+
+@app.get("/ai/openapi.json", include_in_schema=False)
+async def get_open_api():
+    return get_openapi(title=app.title, version=app.version, routes=app.routes)
+
 
 @app.on_event("startup")
 async def startup_event():
