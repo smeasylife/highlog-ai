@@ -67,13 +67,11 @@ class InterviewState(TypedDict):
 class AnalyzerDecision(BaseModel):
     """분석기 결정 모델 - 꼬리질문 여부만 판단"""
     action: str = Field(description="다음 액션 (follow_up, new_topic, wrap_up)")
-    reasoning: str = Field(description="결정 근거")
 
 
 class GeneratedQuestion(BaseModel):
     """생성된 질문 모델"""
     question: str = Field(description="질문 내용")
-    context_summary: str = Field(description="사용된 컨텍스트 요약")
 
 
 # ==================== 하위 주제 정의 ====================
@@ -150,6 +148,26 @@ class InterviewGraph:
         try:
             logger.info(f"Analyzing answer for topic: {state.get('current_sub_topic', 'INTRO')}")
 
+            # 꼬리 질문 1회 이미 했으면 무조건 다음 주제로
+            if state.get('follow_up_count', 0) >= 1:
+                logger.info("Already did follow-up, moving to new topic")
+                state['next_action'] = "new_topic"
+
+                # 답변 로그 저장
+                last_question = ""
+                answer_log = state.get('answer_log', [])
+                if answer_log:
+                    last_question = answer_log[-1].get('question', '')
+
+                log_entry = {
+                    "question": last_question,
+                    "answer": state.get('current_user_answer', ''),
+                    "response_time": state.get('current_response_time', 0),
+                    "sub_topic": state.get('current_sub_topic', '')
+                }
+                state['answer_log'] = state.get('answer_log', []) + [log_entry]
+                return state
+
             # 현재 답변 정보 가져오기
             user_answer = state.get('current_user_answer', '')
             response_time = state.get('current_response_time', 0)
@@ -163,8 +181,8 @@ class InterviewGraph:
             # 컨텍스트 텍스트 구성
             context_text = "\\n\\n".join(state.get('current_context', []))
 
-            # 프롬프트 구성
-            prompt = f"""당신은 대학 입시 면접관입니다. 학생의 답변을 분석하고 다음 단계를 결정하세요.
+            # 프롬프트 구성 (고등학생 면접 맞춤)
+            prompt = f"""당신은 대학 입시 면접관입니다. 학생의 답변을 보고 다음 단계를 결정하세요.
 
 **면접 난이도**: {state['difficulty']}
 **현재 주제**: {state.get('current_sub_topic', '자기소개')}
@@ -179,22 +197,27 @@ class InterviewGraph:
 **관련 학생부 정보**:
 {context_text if context_text else "해당 없음"}
 
-**분석 지침**:
-다음 액션을 결정하세요:
-   - follow_up: 답변이 불충분하거나 더 깊은 파기가 필요할 때 (구체적 사례 부족, 논리적 허점, 판단 근거 불명확 등)
-   - new_topic: 답변이 충실하고 구체적이어서 주제를 바꿀 때
+**중요: 이것은 고등학생 대상 면접입니다**
+- 고등학생 수준에 맞게 판단하세요
+- 적당히 대답하면 바로 다음 주제로 넘어가세요 (new_topic)
+- 평가는 면접 종료 후에 합니다. 중간에 너무 깊게 파지 마세요
+- 너무 실무적인 질문으로 들어가지 마세요 (현직자 수준 질문 금지)
+- 꼬리 질문은 최대 1회만 하세요 (follow_up)
+
+**결정 기준**:
+   - follow_up: 답변이 너무 추상적이거나 이해가 안 될 때만 1회만 (이후에는 무조건 new_topic)
+   - new_topic: 적당히 대답했거나, 꼬리 질문 1회 했으면 무조건 다음 주제로
    - wrap_up: 시간이 부족하거나(30초 미만) 더 이상 질문할 주제가 없을 때
 
 JSON 형식으로 응답하세요."""
 
-            # JSON 스키마 (간소화)
+            # JSON 스키마 (간소화 - reasoning 제거)
             schema = self.types.Schema(
                 type=self.types.Type.OBJECT,
                 properties={
-                    "action": self.types.Schema(type=self.types.Type.STRING, description="다음 액션 (follow_up, new_topic, wrap_up)"),
-                    "reasoning": self.types.Schema(type=self.types.Type.STRING, description="결정 근거")
+                    "action": self.types.Schema(type=self.types.Type.STRING, description="다음 액션 (follow_up, new_topic, wrap_up)")
                 },
-                required=["action", "reasoning"]
+                required=["action"]
             )
             
             # Gemini 호출
@@ -208,15 +231,13 @@ JSON 형식으로 응답하세요."""
             )
             
             result = json.loads(response.text)
-            
-            # 답변 로그 저장
-            from datetime import datetime
+
+            # 답변 로그 저장 (timestamp 제거)
             log_entry = {
                 "question": last_question,
                 "answer": user_answer,
                 "response_time": response_time,
-                "sub_topic": state.get('current_sub_topic', ''),
-                "timestamp": datetime.now().isoformat()
+                "sub_topic": state.get('current_sub_topic', '')
             }
 
             # 리스트에 새 항목 추가 (새 리스트 생성)
@@ -224,8 +245,8 @@ JSON 형식으로 응답하세요."""
 
             # 다음 액션 저장
             state['next_action'] = result['action']
-            
-            logger.info(f"Analysis complete: {result['action']} - {result['reasoning']}")
+
+            logger.info(f"Analysis complete: {result['action']}")
             return state
             
         except Exception as e:
@@ -314,14 +335,13 @@ JSON 형식으로 응답하세요."""
 
 다음 꼬리 질문을 생성하세요."""
 
-            # JSON 스키마
+            # JSON 스키마 (context_summary 제거)
             schema = self.types.Schema(
                 type=self.types.Type.OBJECT,
                 properties={
-                    "question": self.types.Schema(type=self.types.Type.STRING),
-                    "context_summary": self.types.Schema(type=self.types.Type.STRING)
+                    "question": self.types.Schema(type=self.types.Type.STRING)
                 },
-                required=["question", "context_summary"]
+                required=["question"]
             )
             
             response = self.client.models.generate_content(
@@ -333,18 +353,15 @@ JSON 형식으로 응답하세요."""
                     temperature=0.8
                 )
             )
-            
+
             result = json.loads(response.text)
 
-            # 생성된 질문을 answer_log에 추가
-            from datetime import datetime
+            # 생성된 질문을 answer_log에 추가 (timestamp 제거)
             log_entry = {
                 "question": result['question'],
                 "answer": "",
                 "response_time": 0,
-                "sub_topic": state.get('current_sub_topic', ''),
-                "timestamp": datetime.now().isoformat(),
-                "generated_question": result['question']
+                "sub_topic": state.get('current_sub_topic', '')
             }
             state['answer_log'] = state.get('answer_log', []) + [log_entry]
             state['follow_up_count'] = state.get('follow_up_count', 0) + 1
@@ -399,14 +416,13 @@ JSON 형식으로 응답하세요."""
 
 첫 질문을 생성하세요."""
 
-            # JSON 스키마
+            # JSON 스키마 (context_summary 제거)
             schema = self.types.Schema(
                 type=self.types.Type.OBJECT,
                 properties={
-                    "question": self.types.Schema(type=self.types.Type.STRING),
-                    "context_summary": self.types.Schema(type=self.types.Type.STRING)
+                    "question": self.types.Schema(type=self.types.Type.STRING)
                 },
-                required=["question", "context_summary"]
+                required=["question"]
             )
             
             response = self.client.models.generate_content(
@@ -417,18 +433,15 @@ JSON 형식으로 응답하세요."""
     "response_json_schema": schema,
 }
             )
-            
+
             result = json.loads(response.text)
 
-            # 생성된 질문을 answer_log에 추가
-            from datetime import datetime
+            # 생성된 질문을 answer_log에 추가 (timestamp 제거)
             log_entry = {
                 "question": result['question'],
                 "answer": "",
                 "response_time": 0,
-                "sub_topic": state.get('current_sub_topic', ''),
-                "timestamp": datetime.now().isoformat(),
-                "generated_question": result['question']
+                "sub_topic": state.get('current_sub_topic', '')
             }
             state['answer_log'] = state.get('answer_log', []) + [log_entry]
 
@@ -530,13 +543,11 @@ JSON 형식으로 응답하세요."""
             logger.info(f"Created interview session: {interview_session.id}")
 
             # 초기 상태 생성 (첫 번째 answer_log 항목 미리 추가)
-            from datetime import datetime
             initial_answer_log = [{
                 "question": "자기소개 부탁드립니다.",
                 "answer": first_answer,
                 "response_time": response_time,
-                "sub_topic": "",
-                "timestamp": datetime.now().isoformat()
+                "sub_topic": ""
             }]
 
             initial_state: InterviewState = {
@@ -638,17 +649,8 @@ JSON 형식으로 응답하세요."""
                 next_question = ""
                 answer_log = result_state.get('answer_log', [])
                 if answer_log:
-                    # answer_log에 추가된 마지막 질문 사용
-                    # analyzer에서 이미 이전 질문을 저장했음
-                    # 새로 생성된 질문은 result_state의 마지막 항목
-                    for log in reversed(answer_log):
-                        if 'generated_question' in log:
-                            next_question = log['generated_question']
-                            break
-
-                    # 없으면 마지막 question 필드 사용
-                    if not next_question:
-                        next_question = answer_log[-1].get('question', '')
+                    # 마지막 question 필드 사용
+                    next_question = answer_log[-1].get('question', '')
 
                 return next_question
 

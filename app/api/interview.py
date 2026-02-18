@@ -52,7 +52,6 @@ async def initialize_interview_text(
     Returns:
         InterviewChatResponse:
             - next_question: 두 번째 질문
-            - analysis: 분석 데이터
             - is_finished: 종료 여부
             - thread_id: 고유 thread ID (이후 요청에 사용)
     """
@@ -106,7 +105,6 @@ async def initialize_interview_audio(
     Returns:
         AudioInterviewResponse:
             - next_question: 두 번째 질문
-            - analysis: 분석 데이터
             - is_finished: 종료 여부
             - thread_id: 고유 thread ID (이후 요청에 사용)
             - audio_url: 다음 질문의 TTS 음성 URL
@@ -398,7 +396,6 @@ async def get_interview_logs(
                 - answer: 답변 내용
                 - response_time: 답변 시간(초)
                 - sub_topic: 주제
-                - timestamp: 응답 시간
     """
     try:
         # thread_id에서 user_id 추출하여 권한 확인
