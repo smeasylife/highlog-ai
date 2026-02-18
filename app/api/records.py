@@ -26,6 +26,7 @@ async def send_progress(progress: int, queue: asyncio.Queue):
     await queue.put(progress)
 
 
+@router.post("")
 @router.post("/")
 async def create_record(
     request: CreateRecordRequest,
