@@ -310,7 +310,9 @@ def _process_chat_with_checkpoint(
         return next_question
 
     except Exception as e:
+        import traceback
         logger.error(f"Error processing chat with checkpoint: {e}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
         raise
 
 

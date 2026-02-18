@@ -390,53 +390,68 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
                     raise
             return embeddings
     
-    async def search_chunks_by_topic(
+    def search_chunks_by_topic(
         self,
         record_id: int,
-        topic: str
+        topic: str,
+        db: Session = None
     ) -> List[str]:
         """
         주제에 따라 관련 청크를 pgvector 유사도 검색으로 찾기
-        
+
         Args:
             record_id: 생기부 ID
             topic: 하위 주제 (출결, 성적, 동아리, 리더십, 인성/태도, 진로/자율, 독서, 봉사)
-        
+            db: 데이터베이스 세션 (외부에서 주입)
+
         Returns:
-            관련 청크 텍스트 리스트 (유사도 순 상위 5개)
+            관련 청크 텍스트 리스트 (유사도 순 상위 3개)
         """
         try:
-            import asyncpg
-            
-            # 1. 주제를 embedding으로 변환
-            query_embedding = await self._embed_text(topic)
-            
-            # 2. PostgreSQL 연결
-            from config import settings
-            conn = await asyncpg.connect(settings.database_url)
-            
+            from app.database import get_db
+
+            # DB 세션 가져오기 (외부에서 주입받거나 새로 생성)
+            if db is None:
+                db_generator = get_db()
+                db = next(db_generator)
+                should_close = True
+            else:
+                should_close = False
+
             try:
-                # 3. pgvector 코사인 유사도 검색
-                # <=> 연산자: 코사인 거리 (작을수록 유사)
-                query = """
+                # 1. 주제를 embedding으로 변환 (동기로 변경)
+                import asyncio
+                loop = asyncio.get_event_loop()
+                query_embedding = loop.run_until_complete(self._embed_text(topic))
+
+                # 2. pgvector 코사인 유사도 검색 (명시적 타입 캐스팅)
+                # <-> 연산자: 코사인 거리 (작을수록 유사)
+                query = text("""
                     SELECT chunk_text
                     FROM record_chunks
-                    WHERE record_id = $1
-                    ORDER BY embedding <=> $2
-                    LIMIT 5
-                """
-                
-                rows = await conn.fetch(query, record_id, query_embedding)
-                
-                # 4. 텍스트만 추출
-                result = [row['chunk_text'] for row in rows]
-                
-                logger.info(f"Retrieved {len(result)} chunks for topic '{topic}' using vector similarity")
-                return result
-                
+                    WHERE record_id = :record_id
+                    ORDER BY embedding <=> cast(:embedding as vector)
+                    LIMIT 3
+                """)
+
+                # embedding을 문자열로 변환 (PostgreSQL vector 형식)
+                embedding_str = str(query_embedding)
+
+                result = db.execute(
+                    query,
+                    {"record_id": record_id, "embedding": embedding_str}
+                )
+
+                rows = result.fetchall()
+                chunks = [row[0] for row in rows]
+
+                logger.info(f"Retrieved {len(chunks)} chunks for topic '{topic}' using vector similarity")
+                return chunks
+
             finally:
-                await conn.close()
-                
+                if should_close:
+                    db.close()
+
         except Exception as e:
             logger.error(f"Error searching chunks for topic {topic}: {e}")
             return []

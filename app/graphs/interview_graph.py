@@ -259,47 +259,55 @@ JSON 형식으로 응답하세요."""
         return state.get('next_action', 'wrap_up')
     
     def retrieve_new_topic(
-        self, 
+        self,
         state: InterviewState
     ) -> InterviewState:
         """새로운 주제 검색"""
+        db = None
         try:
             # 미중복 주제 선택
             remaining_topics = [
-                topic for topic in SUB_TOPICS 
+                topic for topic in SUB_TOPICS
                 if topic not in state.get('asked_sub_topics', [])
             ]
-            
+
             if not remaining_topics:
                 logger.info("No more topics available")
                 state['next_action'] = "wrap_up"
                 return state
-            
+
             # 랜덤 선택 (또는 전략적 선택)
             import random
             new_topic = random.choice(remaining_topics)
-            
+
             logger.info(f"Selected new topic: {new_topic}")
-            
-            # 벡터 DB에서 관련 청크 검색
+
+            # 벡터 DB에서 관련 청크 검색 (DB 세션 재사용)
             from app.services.vector_service import vector_service
-            
+
+            db = SessionLocal()
             chunks = vector_service.search_chunks_by_topic(
                 record_id=state['record_id'],
-                topic=new_topic
+                topic=new_topic,
+                db=db  # DB 세션 전달
             )
-            
+
             state['current_sub_topic'] = new_topic
             state['current_context'] = chunks  # 이미 text 리스트
             state['asked_sub_topics'].append(new_topic)
             state['follow_up_count'] = 0
-            
+
             return state
-            
+
         except Exception as e:
+            import traceback
             logger.error(f"Error retrieving new topic: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
             state['next_action'] = "wrap_up"
             return state
+        finally:
+            if db:
+                db.close()
     
     def follow_up_generator(self, state: InterviewState) -> InterviewState:
         """꼬리 질문 생성"""
@@ -608,7 +616,9 @@ JSON 형식으로 응답하세요."""
                 return result.checkpoint['channel_values']
 
         except Exception as e:
+            import traceback
             logger.error(f"Error getting state for thread_id {thread_id}: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
             raise
 
     def process_answer(
@@ -655,8 +665,10 @@ JSON 형식으로 응답하세요."""
                 return next_question
 
         except Exception as e:
+            import traceback
             error_msg = str(e)
-            logger.error(f"Error processing answer: {e}", exc_info=True)
+            logger.error(f"Error processing answer: {error_msg}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
 
             # 429 할당량 초과 에러
             if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
