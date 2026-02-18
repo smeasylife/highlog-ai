@@ -3,8 +3,7 @@
 꼬리 질문(Tail Questions) 시스템을 통해 심층적인 면접을 수행합니다.
 상태 저장은 LangGraph의 AsyncPostgresSaver Checkpointer가 자동으로 처리합니다.
 """
-from typing import TypedDict, List, Dict, Any, Optional, Annotated
-from operator import add
+from typing import TypedDict, List, Dict, Any, Optional
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.postgres import PostgresSaver
 from pydantic import BaseModel, Field
@@ -18,17 +17,6 @@ import logging
 import json
 
 logger = logging.getLogger(__name__)
-
-
-# ==================== Reducer 함수 정의 ====================
-
-def merge_logs(existing: List[Dict], new: List[Dict]) -> List[Dict]:
-    """answer_log 병합 함수"""
-    if not existing:
-        return new
-    if not new:
-        return existing
-    return existing + new
 
 
 # ==================== State 정의 ====================
@@ -46,9 +34,6 @@ class InterviewState(TypedDict):
     current_sub_topic: str             # 현재 진행 중인 세부 주제
     asked_sub_topics: List[str]        # 이미 완료된 세부 주제 리스트
 
-    # 답변 기록 (checkpoint에 저장)
-    answer_log: Annotated[List[Dict], merge_logs]
-
     # 내부 상태
     next_action: str                   # [follow_up, new_topic, wrap_up]
     follow_up_count: int               # 현재 주제에 대한 꼬리 질문 횟수
@@ -60,6 +45,10 @@ class InterviewState(TypedDict):
     # 현재 처리 중인 답변 (checkpoint에 저장하지 않음 - pass through)
     current_user_answer: str
     current_response_time: int
+
+    # 마지막 질문/답변 (메모리용, checkpoint에 저장되지 않음)
+    last_question: str = ""
+    last_answer: str = ""
 
 
 # ==================== Pydantic 모델 ====================
@@ -154,22 +143,17 @@ class InterviewGraph:
                 logger.info("Already did follow-up, moving to new topic")
                 state['next_action'] = "new_topic"
 
-                # 답변 로그 저장
-                last_question = ""
-                answer_log = state.get('answer_log', [])
-                if answer_log:
-                    last_question = answer_log[-1].get('question', '')
-
+                # 답변 로그 저장 (InterviewSession에만)
                 log_entry = {
-                    "question": last_question,
+                    "question": state.get('last_question', ''),
                     "answer": state.get('current_user_answer', ''),
                     "response_time": state.get('current_response_time', 0),
                     "sub_topic": state.get('current_sub_topic', '')
                 }
-                state['answer_log'] = state.get('answer_log', []) + [log_entry]
-
-                # InterviewSession에도 로그 저장
                 self._save_interview_log(state, log_entry)
+
+                # 마지막 답변 업데이트
+                state['last_answer'] = state.get('current_user_answer', '')
 
                 return state
 
@@ -177,11 +161,8 @@ class InterviewGraph:
             user_answer = state.get('current_user_answer', '')
             response_time = state.get('current_response_time', 0)
 
-            # 마지막 질문 가져오기 (answer_log에서)
-            last_question = ""
-            answer_log = state.get('answer_log', [])
-            if answer_log:
-                last_question = answer_log[-1].get('question', '')
+            # 마지막 질문 가져오기 (state의 last_question 사용)
+            last_question = state.get('last_question', '')
 
             # ID 리스트로 텍스트 조회
             context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
@@ -246,11 +227,11 @@ JSON 형식으로 응답하세요."""
                 "sub_topic": state.get('current_sub_topic', '')
             }
 
-            # 리스트에 새 항목 추가 (새 리스트 생성)
-            state['answer_log'] = state.get('answer_log', []) + [log_entry]
-
-            # InterviewSession에도 로그 저장
+            # InterviewSession에 로그 저장 (checkpoint 아님)
             self._save_interview_log(state, log_entry)
+
+            # 마지막 답변 업데이트
+            state['last_answer'] = user_answer
 
             # 다음 액션 저장
             state['next_action'] = result['action']
@@ -328,11 +309,8 @@ JSON 형식으로 응답하세요."""
         try:
             logger.info(f"Generating follow-up question for: {state.get('current_sub_topic')}")
 
-            # 마지막 답변 가져오기 (answer_log에서)
-            last_answer = ""
-            answer_log = state.get('answer_log', [])
-            if answer_log:
-                last_answer = answer_log[-1].get('answer', '')
+            # 마지막 답변 가져오기 (state의 last_answer 사용)
+            last_answer = state.get('last_answer', '')
 
             # ID 리스트로 텍스트 조회
             context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
@@ -380,14 +358,8 @@ JSON 형식으로 응답하세요."""
 
             result = json.loads(response.text)
 
-            # 생성된 질문을 answer_log에 추가 (timestamp 제거)
-            log_entry = {
-                "question": result['question'],
-                "answer": "",
-                "response_time": 0,
-                "sub_topic": state.get('current_sub_topic', '')
-            }
-            state['answer_log'] = state.get('answer_log', []) + [log_entry]
+            # 마지막 질문 업데이트 (state에만 저장, checkpoint 아님)
+            state['last_question'] = result['question']
             state['follow_up_count'] = state.get('follow_up_count', 0) + 1
 
             return state
@@ -414,6 +386,12 @@ JSON 형식으로 응답하세요."""
 
             # ID 리스트로 텍스트 조회
             context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
+
+            # 🔍 디버깅: 청크 내용 로그 출력
+            logger.info(f"📚 Retrieved {len(context_chunks)} chunks for topic '{state.get('current_sub_topic')}':")
+            for i, chunk in enumerate(context_chunks):
+                logger.info(f"  Chunk {i+1}: {chunk[:300]}...")  # 첫 300자만 출력
+
             context_text = "\n\n".join(context_chunks)
 
             # 첫 질문 프롬프트
@@ -462,14 +440,11 @@ JSON 형식으로 응답하세요."""
 
             result = json.loads(response.text)
 
-            # 생성된 질문을 answer_log에 추가 (timestamp 제거)
-            log_entry = {
-                "question": result['question'],
-                "answer": "",
-                "response_time": 0,
-                "sub_topic": state.get('current_sub_topic', '')
-            }
-            state['answer_log'] = state.get('answer_log', []) + [log_entry]
+            # 🔍 디버깅: 생성된 질문 로그
+            logger.info(f"✅ Generated question: {result['question']}")
+
+            # 마지막 질문 업데이트 (state에만 저장, checkpoint 아님)
+            state['last_question'] = result['question']
 
             return state
 
@@ -484,27 +459,30 @@ JSON 형식으로 응답하세요."""
         try:
             logger.info("Generating wrap-up summary")
 
-            # 전체 대화 기록 분석 (answer_log 사용)
-            answer_log = state.get('answer_log', [])
-
-            # InterviewSession 업데이트 (종료 상태)
+            # InterviewSession 업데이트 (종료 상태만, 로그는 이미 incrementally 저장됨)
             session_id = state.get('session_id')
+            total_questions = 0
+            avg_response_time = 0
+
             if session_id:
                 db = SessionLocal()
                 try:
                     session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
                     if session:
-                        # 평균 응답 시간 계산
-                        avg_response_time = 0
-                        if answer_log:
-                            total_time = sum(log.get('response_time', 0) for log in answer_log)
-                            avg_response_time = total_time // len(answer_log)
+                        # interview_logs에서 통계 계산
+                        interview_logs = session.interview_logs or []
+                        total_questions = len(interview_logs)
 
+                        if interview_logs:
+                            total_time = sum(log.get('response_time', 0) for log in interview_logs)
+                            avg_response_time = total_time // total_questions
+
+                        # 세션 종료 상태로 업데이트
                         session.status = "COMPLETED"
                         session.avg_response_time = avg_response_time
                         session.completed_at = func.now()
                         db.commit()
-                        logger.info(f"Updated interview session {session_id} to COMPLETED")
+                        logger.info(f"Updated interview session {session_id} to COMPLETED with {total_questions} logs")
                 finally:
                     db.close()
 
@@ -512,7 +490,7 @@ JSON 형식으로 응답하세요."""
             closing_message = f"""면접을 종료합니다. 수고하셨습니다.
 
 📊 **면접 요약**
-- 총 질문 수: {len(answer_log)}개
+- 총 질문 수: {total_questions}개
 - 소요 시간: {600 - state.get('remaining_time', 600)}초
 
 상세 분석 결과는 면접 종료 후 확인해주세요."""
@@ -574,14 +552,7 @@ JSON 형식으로 응답하세요."""
             db.refresh(interview_session)
             logger.info(f"Created interview session: {interview_session.id}")
 
-            # 초기 상태 생성 (첫 번째 answer_log 항목 미리 추가)
-            initial_answer_log = [{
-                "question": "자기소개 부탁드립니다.",
-                "answer": first_answer,
-                "response_time": response_time,
-                "sub_topic": ""
-            }]
-
+            # 초기 상태 생성
             initial_state: InterviewState = {
                 'difficulty': difficulty,
                 'remaining_time': 600,  # 10분
@@ -589,13 +560,14 @@ JSON 형식으로 응답하세요."""
                 'current_context': [],
                 'current_sub_topic': '',
                 'asked_sub_topics': [],
-                'answer_log': initial_answer_log,
                 'next_action': '',
                 'follow_up_count': 0,
                 'session_id': interview_session.id,  # 세션 ID 저장
                 'record_id': record_id,
                 'current_user_answer': first_answer,
-                'current_response_time': response_time
+                'current_response_time': response_time,
+                'last_question': '자기소개 부탁드립니다.',
+                'last_answer': ''
             }
 
             # process_answer 재사용
@@ -679,12 +651,8 @@ JSON 형식으로 응답하세요."""
                 config = {"configurable": {"thread_id": thread_id}}
                 result_state = graph.invoke(state, config=config)
 
-                # answer_log에서 마지막 질문 추출
-                next_question = ""
-                answer_log = result_state.get('answer_log', [])
-                if answer_log:
-                    # 마지막 question 필드 사용
-                    next_question = answer_log[-1].get('question', '')
+                # last_question에서 다음 질문 추출
+                next_question = result_state.get('last_question', '')
 
                 return next_question
 
