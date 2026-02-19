@@ -900,9 +900,10 @@ JSON 형식으로 응답하세요."""
             logs.append(log_entry)
 
             # RAW SQL로 직접 업데이트 (SQLAlchemy ORM 우회)
+            # CAST 함수 사용 (:: 캐스팅은 SQLAlchemy 파라미터와 충돌)
             db.execute(text("""
                 UPDATE interview_sessions
-                SET interview_logs = :logs::json
+                SET interview_logs = CAST(:logs AS JSON)
                 WHERE id = :session_id
             """), {"logs": json.dumps(logs, ensure_ascii=False), "session_id": session_id})
 
