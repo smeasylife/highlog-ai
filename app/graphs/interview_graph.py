@@ -877,21 +877,37 @@ JSON 형식으로 응답하세요."""
             db = SessionLocal()
             session_id = state.get('session_id')
 
-            if session_id:
-                interview_session = db.query(InterviewSession).filter(
-                    InterviewSession.id == session_id
-                ).first()
+            logger.info(f"🔍 _save_interview_log called: session_id={session_id}, question={log_entry.get('question', '')[:30]}")
 
-                if interview_session:
-                    # 기존 로그 가져오기
-                    logs = interview_session.interview_logs if interview_session.interview_logs else []
-                    logs.append(log_entry)
-                    interview_session.interview_logs = logs
-                    db.commit()
-                    logger.debug(f"Saved log to interview_session {session_id}")
+            if not session_id:
+                logger.error(f"❌ session_id is missing in state! Available keys: {list(state.keys())}")
+                return
+
+            # 행 잠금 없이 조회 (단순 업데이트라 데드락 방지)
+            interview_session = db.query(InterviewSession).filter(
+                InterviewSession.id == session_id
+            ).first()
+
+            if not interview_session:
+                logger.error(f"❌ InterviewSession not found for session_id: {session_id}")
+                return
+
+            # 기존 로그 가져오기
+            logs = interview_session.interview_logs if interview_session.interview_logs else []
+            logs.append(log_entry)
+            interview_session.interview_logs = logs
+
+            # 즉시 DB에 반영
+            db.commit()
+
+            logger.info(f"✅ Saved log to interview_session {session_id} (total logs: {len(logs)})")
 
         except Exception as e:
-            logger.error(f"Error saving interview log: {e}")
+            logger.error(f"❌ Error saving interview log: {e}")
+            import traceback
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+            if db:
+                db.rollback()
         finally:
             if db:
                 db.close()

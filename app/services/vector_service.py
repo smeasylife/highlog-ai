@@ -8,6 +8,7 @@ from typing import List, Dict, Tuple
 from pydantic import BaseModel
 from app.models import RecordChunk
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -419,10 +420,8 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
                 should_close = False
 
             try:
-                # 1. 주제를 embedding으로 변환 (동기로 변경)
-                import asyncio
-                loop = asyncio.get_event_loop()
-                query_embedding = loop.run_until_complete(self._embed_text(topic))
+                # 1. 주제를 embedding으로 변환 (동기 방식으로 처리)
+                query_embedding = self._embed_text_sync(topic)
 
                 # 2. pgvector 코사인 유사도 검색 (ID만 반환)
                 # <-> 연산자: 코사인 거리 (작을수록 유사)
@@ -455,6 +454,34 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
         except Exception as e:
             logger.error(f"Error searching chunks for topic {topic}: {e}")
             return []
+
+    def _embed_text_sync(self, text: str) -> List[float]:
+        """텍스트를 벡터로 임베딩 (동기 버전 - 이벤트 루프 내에서도 안전하게 실행)"""
+        import threading
+        import concurrent.futures
+
+        def run_in_new_loop():
+            """별도 스레드에서 새 이벤트 루프 생성하여 실행"""
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(self._embed_text(text))
+            finally:
+                loop.close()
+
+        # 이미 실행 중인 이벤트 루프가 있는지 확인
+        try:
+            import asyncio
+            asyncio.get_running_loop()
+            # 실행 중인 루프가 있으면 별도 스레드에서 실행
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(run_in_new_loop)
+                return future.result(timeout=30)  # 30초 타임아웃
+        except RuntimeError:
+            # 실행 중인 루프가 없으면 직접 실행
+            import asyncio
+            return asyncio.run(self._embed_text(text))
 
 
 
