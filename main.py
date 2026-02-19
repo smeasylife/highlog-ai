@@ -26,14 +26,17 @@ app = FastAPI(
     debug=settings.debug
 )
 
-# CORS 미들웨어 설정 (OPTIONS preflight 요청을 먼저 처리)
+# CORS 미들웨어 설정 (Spring Boot와 동일하게 서버 자체에서 처리)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 모든 origin 허용 (nginx에서 이미 필터링됨)
+    allow_origins=[
+        "https://onedaypocket.shop",
+        "https://www.onedaypocket.shop",
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
 # 라우터 등록
@@ -158,22 +161,6 @@ async def startup_event():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-
-
-@app.options("/ai/{path:path}")
-async def options_handler(path: str):
-    """명시적인 OPTIONS 핸들러 - CORS preflight 요청 처리"""
-    from fastapi.responses import Response
-    return Response(
-        status_code=204,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Requested-With",
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Max-Age": "3600",
-        }
-    )
 
 
 if __name__ == "__main__":
