@@ -872,6 +872,9 @@ JSON 형식으로 응답하세요."""
             state: 현재 면접 상태
             log_entry: 저장할 로그 엔트리
         """
+        import json
+        from sqlalchemy import text
+
         db = None
         try:
             db = SessionLocal()
@@ -883,7 +886,7 @@ JSON 형식으로 응답하세요."""
                 logger.error(f"❌ session_id is missing in state! Available keys: {list(state.keys())}")
                 return
 
-            # 행 잠금 없이 조회 (단순 업데이트라 데드락 방지)
+            # 행 잠금 없이 조회
             interview_session = db.query(InterviewSession).filter(
                 InterviewSession.id == session_id
             ).first()
@@ -893,11 +896,17 @@ JSON 형식으로 응답하세요."""
                 return
 
             # 기존 로그 가져오기
-            logs = interview_session.interview_logs if interview_session.interview_logs else []
+            logs = list(interview_session.interview_logs) if interview_session.interview_logs else []
             logs.append(log_entry)
-            interview_session.interview_logs = logs
 
-            # 즉시 DB에 반영
+            # RAW SQL로 직접 업데이트 (SQLAlchemy ORM 우회)
+            db.execute(text("""
+                UPDATE interview_sessions
+                SET interview_logs = :logs::json
+                WHERE id = :session_id
+            """), {"logs": json.dumps(logs, ensure_ascii=False), "session_id": session_id})
+
+            # 즉시 커밋
             db.commit()
 
             logger.info(f"✅ Saved log to interview_session {session_id} (total logs: {len(logs)})")
