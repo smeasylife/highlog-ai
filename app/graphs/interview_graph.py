@@ -219,16 +219,15 @@ JSON 형식으로 응답하세요."""
             
             result = json.loads(response.text)
 
-            # 답변 로그 저장 (timestamp 제거)
-            log_entry = {
-                "question": last_question,
-                "answer": user_answer,
-                "response_time": response_time,
-                "sub_topic": state.get('current_sub_topic', '')
-            }
-
-            # InterviewSession에 로그 저장 (checkpoint 아님)
-            self._save_interview_log(state, log_entry)
+            # INTRO 단계(자기소개)는 이미 initialize_interview에서 저장했으므로 건너뜀
+            if state.get('interview_stage') != 'INTRO':
+                log_entry = {
+                    "question": last_question,
+                    "answer": user_answer,
+                    "response_time": response_time,
+                    "sub_topic": state.get('current_sub_topic', '')
+                }
+                self._save_interview_log(state, log_entry)
 
             # 마지막 답변 업데이트
             state['last_answer'] = user_answer
