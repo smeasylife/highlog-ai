@@ -69,7 +69,8 @@ async def initialize_interview_text(
             difficulty=request.difficulty,
             first_answer=request.first_answer,
             response_time=request.response_time,
-            thread_id=thread_id
+            thread_id=thread_id,
+            mode="TEXT"
         )
 
         return InitializeInterviewResponse(
@@ -137,7 +138,8 @@ async def initialize_interview_audio(
             difficulty=difficulty,
             first_answer=first_answer_text,
             response_time=response_time,
-            thread_id=thread_id
+            thread_id=thread_id,
+            mode="AUDIO"
         )
 
         # 4. TTS (Text-to-Speech) - 다음 질문을 음성으로 변환
@@ -327,10 +329,12 @@ async def get_interview_history(
 
     Returns:
         List[Dict]:
-            - thread_id: 인터뷰 식별자
-            - difficulty: 난이도
+            - session_id: 세션 ID (thread_id)
+            - question_count: 질문 갯수
             - avg_response_time: 평균 응답 시간 (초)
-            - started_at: 면접 시작 시간
+            - total_duration: 전체 소요 시간 (초)
+            - sub_topics: 주제 리스트
+            - created_at: 면접 시작 시간
             - record_title: 생기부 제목
     """
     try:
@@ -348,23 +352,43 @@ async def get_interview_history(
 
             history = []
             for session in sessions:
+                interview_logs = session.interview_logs or []
+
+                # 질문 갯수
+                question_count = len(interview_logs)
+
+                # 전체 소요 시간 (완료 시간 - 시작 시간 또는 전체 응답 시간 합계)
+                total_duration = 0
+                if session.completed_at and session.started_at:
+                    total_duration = int((session.completed_at - session.started_at).total_seconds())
+                else:
+                    # 완료 시간이 없으면 응답 시간 합계로 계산
+                    total_duration = sum(log.get('response_time', 0) for log in interview_logs)
+
+                # sub_topic 리스트 (중복 제거)
+                sub_topics = list(set(
+                    log.get('sub_topic', '') for log in interview_logs
+                    if log.get('sub_topic')  # 빈 문자열 제거
+                ))
+
                 # StudentRecord에서 title 조회
                 record_title = None
                 if session.record:
                     record_title = session.record.title
 
                 history.append({
-                    "thread_id": session.thread_id,
-                    "difficulty": session.difficulty,
-                    "avg_response_time": session.avg_response_time,
-                    "started_at": session.started_at.isoformat() if session.started_at else None,
+                    "session_id": session.thread_id,
+                    "question_count": question_count,
+                    "avg_response_time": session.avg_response_time or 0,
+                    "total_duration": total_duration,
+                    "sub_topics": sub_topics,
+                    "created_at": session.started_at.isoformat() if session.started_at else None,
                     "record_title": record_title
                 })
 
             logger.info(f"Retrieved {len(history)} interview sessions for user {current_user.user_id}")
 
             return {
-                "count": len(history),
                 "interviews": history
             }
 
@@ -378,21 +402,23 @@ async def get_interview_history(
 
 # ==================== 면접 기록 조회 ====================
 
-@router.get("/logs/{thread_id}")
+@router.get("/logs/{session_id}")
 async def get_interview_logs(
-    thread_id: str,
+    session_id: int,
     current_user: CurrentUser = Depends(get_current_user)
 ):
     """
     특정 면접의 대화 기록 반환 (InterviewSession에서 조회)
 
     Args:
-        thread_id: 면접 thread ID
+        session_id: 면접 세션 ID (InterviewSession.id)
 
     Returns:
         대화 기록:
             - thread_id: 면접 식별자
             - difficulty: 난이도
+            - mode: 면접 방식 (TEXT, AUDIO)
+            - started_at: 면접 시작 시간
             - logs: 질문/답변 로그 리스트
                 - question: 질문 내용
                 - answer: 답변 내용
@@ -406,23 +432,24 @@ async def get_interview_logs(
         db = next(get_db())
 
         try:
-            # thread_id에서 user_id 추출하여 권한 확인
-            parts = thread_id.split('_')
-            if len(parts) < 2 or parts[1] != str(current_user.user_id):
-                raise HTTPException(status_code=403, detail="Access denied to this interview")
-
             # InterviewSession 조회
             interview_session = db.query(InterviewSession).filter(
-                InterviewSession.thread_id == thread_id
+                InterviewSession.id == session_id
             ).first()
 
             if not interview_session:
                 raise HTTPException(status_code=404, detail="면접을 찾을 수 없습니다.")
 
+            # 권한 확인
+            if interview_session.user_id != current_user.user_id:
+                raise HTTPException(status_code=403, detail="Access denied to this interview")
+
             # interview_logs 반환
             return {
-                "thread_id": thread_id,
+                "thread_id": interview_session.thread_id,
                 "difficulty": interview_session.difficulty,
+                "mode": interview_session.mode,
+                "started_at": interview_session.started_at.isoformat() if interview_session.started_at else None,
                 "logs": interview_session.interview_logs if interview_session.interview_logs else []
             }
 
@@ -438,16 +465,16 @@ async def get_interview_logs(
 
 # ==================== 면접 결과 분석 ====================
 
-@router.get("/analyze/{thread_id}")
+@router.get("/analyze/{session_id}")
 async def analyze_interview_result(
-    thread_id: str,
+    session_id: int,
     current_user: CurrentUser = Depends(get_current_user)
 ):
     """
     면접 결과 분석 및 종합 리포트 반환
 
     Args:
-        thread_id: 면접 thread ID
+        session_id: 면접 세션 ID (InterviewSession.id)
 
     Returns:
         종합 분석 리포트:
@@ -467,19 +494,34 @@ async def analyze_interview_result(
                 - supplement_needed: 보완 필요 사항
     """
     try:
-        # thread_id에서 user_id 추출하여 권한 확인
-        # thread_id 형식: interview_{user_id}_{record_id}_{uuid}
-        parts = thread_id.split('_')
-        if len(parts) < 2 or parts[1] != str(current_user.user_id):
-            raise HTTPException(status_code=403, detail="Access denied to this interview")
+        from app.database import get_db
+        from app.models import InterviewSession
+
+        db = next(get_db())
+
+        try:
+            # InterviewSession 조회
+            interview_session = db.query(InterviewSession).filter(
+                InterviewSession.id == session_id
+            ).first()
+
+            if not interview_session:
+                raise HTTPException(status_code=404, detail="면접을 찾을 수 없습니다.")
+
+            # 권한 확인
+            if interview_session.user_id != current_user.user_id:
+                raise HTTPException(status_code=403, detail="Access denied to this interview")
+
+        finally:
+            db.close()
 
         # 분석 실행
-        result = interview_graph.analyze_interview_result(thread_id)
+        result = interview_graph.analyze_interview_result(interview_session.thread_id)
 
         if "error" in result:
             raise HTTPException(status_code=404, detail=result.get("message"))
 
-        logger.info(f"Interview analysis complete for thread_id: {thread_id}")
+        logger.info(f"Interview analysis complete for session_id: {session_id}")
 
         return result
 

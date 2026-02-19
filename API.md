@@ -107,6 +107,58 @@ data: {"type": "error", "progress": 0}
 
 ## 3. 실시간 면접 (Real-time Interview)
 
+### 3-0. 인터뷰 내역 조회
+
+### GET /ai/interview/list
+
+로그인한 사용자의 모든 면접 내역을 조회합니다.
+
+**Headers:**
+```
+Authorization: Bearer {accessToken}
+```
+
+**Response:**
+```json
+{
+  "interviews": [
+    {
+      "session_id": "interview_2_2_6f0e7461",
+      "question_count": 4,
+      "avg_response_time": 56,
+      "total_duration": 240,
+      "sub_topics": ["출결", "리더십"],
+      "created_at": "2025-02-19T12:00:00",
+      "record_title": "2024학년도 생활기록부"
+    },
+    {
+      "session_id": "interview_2_2_7a1b8c2d",
+      "question_count": 3,
+      "avg_response_time": 45,
+      "total_duration": 180,
+      "sub_topics": ["동아리", "진로"],
+      "created_at": "2025-02-18T15:30:00",
+      "record_title": "2024학년도 생활기록부"
+    }
+  ]
+}
+```
+
+**Response Fields:**
+- `session_id`: 세션 고유 ID (thread_id)
+- `question_count`: 질문 갯수
+- `avg_response_time`: 평균 응답 시간 (초)
+- `total_duration`: 전체 소요 시간 (초)
+- `sub_topics`: 면접에서 다룬 주제 리스트
+- `created_at`: 면접 시작 시간
+- `record_title`: 생기부 제목
+
+**Error Cases:**
+- `401 Unauthorized`: 인증되지 않은 사용자입니다.
+- `500 Internal Server Error`: 서버 내부 오류
+
+---
+
 ### 3-1. 면접 시작
 
 ### POST /chat/text

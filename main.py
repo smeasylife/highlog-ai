@@ -126,7 +126,18 @@ async def startup_event():
                 conn.commit()
                 logging.info(f"Added {col_name} column to questions")
 
-            # 3-3. HNSW 인덱스 생성
+            # 3-3. interview_sessions 테이블에 mode 컬럼 확인
+            result = conn.execute(text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'interview_sessions' AND column_name = 'mode'
+            """))
+
+            if result.fetchone() is None:
+                conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN mode VARCHAR(20) DEFAULT 'TEXT'"))
+                conn.commit()
+                logging.info("Added mode column to interview_sessions")
+
+            # 3-4. HNSW 인덱스 생성
             try:
                 conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS record_chunks_embedding_idx

@@ -111,6 +111,7 @@ class InterviewSession(Base):
 
     # 면접 설정
     difficulty = Column(String(20), default="Normal")  # Easy, Normal, Hard
+    mode = Column(String(20), default="TEXT")  # TEXT, AUDIO
 
     # 세션 상태
     status = Column(String(20), default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, ABANDONED

@@ -511,7 +511,8 @@ JSON 형식으로 응답하세요."""
         difficulty: str,
         first_answer: str,
         response_time: int,
-        thread_id: str
+        thread_id: str,
+        mode: str = "TEXT"
     ) -> Dict[str, Any]:
         """
         면접 초기화 (첫 답변 처리)
@@ -523,13 +524,14 @@ JSON 형식으로 응답하세요."""
             first_answer: 첫 답변 (자기소개)
             response_time: 답변 소요 시간
             thread_id: LangGraph thread ID
+            mode: 면접 방식 (TEXT, AUDIO)
 
         Returns:
             Dict with next_question, updated_state, is_finished
         """
         db = None
         try:
-            logger.info(f"Initializing interview for record {record_id}, difficulty: {difficulty}")
+            logger.info(f"Initializing interview for record {record_id}, difficulty: {difficulty}, mode: {mode}")
 
             # InterviewSession 생성
             db = SessionLocal()
@@ -538,6 +540,7 @@ JSON 형식으로 응답하세요."""
                 record_id=record_id,
                 thread_id=thread_id,
                 difficulty=difficulty,
+                mode=mode,
                 status="IN_PROGRESS",
                 interview_logs=[{  # 첫 로그 저장
                     "question": "자기소개 부탁드립니다.",
