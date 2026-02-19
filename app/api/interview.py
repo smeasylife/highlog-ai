@@ -377,7 +377,7 @@ async def get_interview_history(
                     record_title = session.record.title
 
                 history.append({
-                    "session_id": session.thread_id,
+                    "session_id": session.id,
                     "question_count": question_count,
                     "avg_response_time": session.avg_response_time or 0,
                     "total_duration": total_duration,
