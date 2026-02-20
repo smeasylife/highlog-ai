@@ -312,7 +312,7 @@ class QuestionGenerationGraph:
 
 이 내용을 바탕으로 위의 지침에 따라 예상 면접 질문을 JSON 형식으로 생성해주세요."""
 
-            # JSON 스키마 정의
+            # JSON 스키마 정의 - category 필드 제거 (코드에서 직접 할당)
             schema = self.types.Schema(
                 type=self.types.Type.OBJECT,
                 properties={
@@ -321,7 +321,6 @@ class QuestionGenerationGraph:
                         items=self.types.Schema(
                             type=self.types.Type.OBJECT,
                             properties={
-                                "category": self.types.Schema(type=self.types.Type.STRING, description="질문 카테고리"),
                                 "content": self.types.Schema(type=self.types.Type.STRING, description="질문 내용"),
                                 "difficulty": self.types.Schema(type=self.types.Type.STRING, description="난이도 (기본, 심화, 압박)"),
                                 "purpose": self.types.Schema(type=self.types.Type.STRING, description="질문의 목적"),
@@ -329,7 +328,7 @@ class QuestionGenerationGraph:
                                 "model_answer": self.types.Schema(type=self.types.Type.STRING, description="모범 답안"),
                                 "evaluation_criteria": self.types.Schema(type=self.types.Type.STRING, description="평가 기준"),
                             },
-                            required=["category", "content", "difficulty", "purpose", "answer_points", "model_answer", "evaluation_criteria"]
+                            required=["content", "difficulty", "purpose", "answer_points", "model_answer", "evaluation_criteria"]
                         )
                     )
                 },
@@ -349,6 +348,10 @@ class QuestionGenerationGraph:
             # JSON 파싱
             result = json.loads(response.text)
             questions = result.get("questions", [])
+
+            # category를 코드에서 직접 할당 (AI가 임의로 생성하지 않도록)
+            for q in questions:
+                q["category"] = category
 
             logger.info(f"Generated {len(questions)} questions for {category}")
             return questions
