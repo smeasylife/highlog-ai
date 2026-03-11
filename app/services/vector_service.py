@@ -75,9 +75,10 @@ class VectorService:
             total_batches = (total_pages + batch_size - 1) // batch_size
 
             logger.info(f"📄 {total_pages} pages → {total_batches} batches ({batch_size} pages/batch)")
-            
+
+            # PDF 파싱 시작 (30%)
             if progress_callback:
-                await progress_callback(10)
+                await progress_callback(30)
 
             # 2. 모든 배치를 동시에 처리 (병렬 처리) ⚡
             all_chunks = []
@@ -92,7 +93,7 @@ class VectorService:
                 end_page = min(start_page + batch_size, total_pages)
                 pages_in_batch = list(range(start_page, end_page))
                 tasks.append(self._parse_pdf_batch_with_gemini(
-                    pdf_bytes, pages_in_batch, i, total_batches
+                    pdf_bytes, pages_in_batch
                 ))
 
             # 동시 실행 (병렬 처리)
@@ -112,9 +113,9 @@ class VectorService:
                     logger.warning(f"⚠️  [{i+1}/{total_batches}] No chunks")
                     failed_batches.append(i + 1)
 
-            # 진행률 업데이트
+            # 진행률 업데이트 (청킹 완료: 50%)
             if progress_callback:
-                await progress_callback(70)
+                await progress_callback(50)
 
             # 실패한 배치가 있어도 계속 진행 (부분 성공 허용)
             if failed_batches:
@@ -126,7 +127,7 @@ class VectorService:
 
             # 3. 배치 임베딩 & 벌크 DB 삽입 🔥
             if progress_callback:
-                await progress_callback(75)
+                await progress_callback(55)  # 임베딩 시작
 
             logger.info(f"🔄 Batch Embedding {len(all_chunks)} chunks...")
 
@@ -143,9 +144,9 @@ class VectorService:
                     embeddings = await self._embed_batch(texts)
                     all_embeddings.extend(embeddings)
                     
-                    # 진행률 업데이트 (75-90%)
+                    # 진행률 업데이트 (55-90%)
                     if progress_callback:
-                        embed_progress = 75 + int(((i + batch_size) / len(all_chunks)) * 15)
+                        embed_progress = 55 + int(((i + batch_size) / len(all_chunks)) * 35)
                         await progress_callback(min(embed_progress, 90))
                         
                 except Exception as e:
@@ -189,7 +190,6 @@ class VectorService:
             
             logger.info("📊 " + ", ".join(result_parts))
 
-            # 저장된 청크가 1개 이상이면 성공 (부분 성공 허용)
             if saved_count == 0:
                 logger.error("❌ No chunks were successfully vectorized")
                 return False, "No chunks were successfully vectorized", 0
@@ -211,19 +211,15 @@ class VectorService:
     async def _parse_pdf_batch_with_gemini(
         self,
         pdf_bytes: io.BytesIO,
-        page_numbers: List[int],
-        batch_index: int,
-        total_batches: int
+        page_numbers: List[int]
     ) -> List[Dict]:
         """
         Gemini 2.5 Flash로 PDF 페이지 배치를 파싱
-        
+
         Args:
             pdf_bytes: PDF 파일 바이트
             page_numbers: 처리할 페이지 번호 리스트 (0-based)
-            batch_index: 배치 인덱스
-            total_batches: 전체 배치 수
-            
+
         Returns:
             청크 리스트
         """
@@ -301,7 +297,7 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             doc.close()
 
             # Gemini 2.5 Flash에 비동기 요청 전송 (JSON 형식 응답 강제)
-            logger.info(f"🚀 [{batch_index+1}/{total_batches}] Sending request for pages {page_numbers}...")
+            logger.info(f"🚀 Sending request for pages {page_numbers}...")
             import time
             start_time = time.time()
 
@@ -315,7 +311,7 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             )
 
             elapsed = time.time() - start_time
-            logger.info(f"✅ [{batch_index+1}/{total_batches}] Response received for pages {page_numbers} ({elapsed:.1f}s)")
+            logger.info(f"✅ Response received for pages {page_numbers} ({elapsed:.1f}s)")
             
             # 응답 텍스트 추출 및 JSON 파싱
             response_text = response.text

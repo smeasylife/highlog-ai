@@ -66,89 +66,6 @@ async def create_record(
         logger.error(f"Error creating record: {e}")
         raise HTTPException(status_code=500, detail=f"생기부 등록 중 오류가 발생했습니다: {str(e)}")
 
-
-# vectorize 엔드포인트 삭제 - 이제 자동으로 처리됨
-
-
-async def vectorization_stream(record: StudentRecord, db: Session):
-    """
-    벡터화 SSE 스트림 생성기
-
-    Args:
-        record: StudentRecord 객체
-        db: 데이터베이스 세션
-    """
-    try:
-        # 초기 상태 변경
-        record.status = "PENDING"
-        db.commit()
-
-        # 시작 이벤트 전송
-        yield create_sse_event(0)
-
-        # 진행률 큐 생성
-        progress_queue = asyncio.Queue()
-
-        # 벡터화 작업을 백그라운드 태스크로 실행
-        vectorization_task = asyncio.create_task(
-            _process_vectorization_with_progress(
-                record_id=record.id,
-                s3_key=record.s3_key,
-                db=db,
-                progress_queue=progress_queue
-            )
-        )
-
-        # 큐에서 진행률을 실시간으로 수신하여 전송
-        while not vectorization_task.done() or not progress_queue.empty():
-            try:
-                progress = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
-                yield create_sse_event(progress)
-            except asyncio.TimeoutError:
-                continue
-
-        # 작업 결과 확인
-        success, message, total_chunks = await vectorization_task
-
-        if not success:
-            error_event = SSEProgressEvent(
-                type="error",
-                progress=0,
-                message=str(e) if 'e' in locals() else "에러가 발생했습니다"
-            )
-            yield f"data: {error_event.model_dump_json()}\n\n"
-            return
-
-        # 완료 이벤트 전송
-        complete_event = SSEProgressEvent(
-            type="complete",
-            progress=100,
-            message="완료되었습니다."
-        )
-        yield f"data: {complete_event.model_dump_json()}\n\n"
-
-    except Exception as e:
-        logger.error(f"Error in vectorization stream: {e}")
-        error_event = SSEProgressEvent(
-                type="error",
-                progress=0,
-                message=str(e) if 'e' in locals() else "에러가 발생했습니다"
-            )
-        yield f"data: {error_event.model_dump_json()}\n\n"
-
-
-def create_sse_event(progress: int) -> str:
-    """
-    SSE 이벤트 생성 헬퍼 함수
-    """
-    event = SSEProgressEvent(
-            type="processing",
-            progress=progress,
-            message=f"진행률 {progress}%"
-        )
-    return f"data: {event.model_dump_json()}\n\n"
-
-
 async def record_creation_stream(record: StudentRecord, db: Session):
     """
     생기부 등록 + 벡터화 SSE 스트림
@@ -260,8 +177,6 @@ async def _process_vectorization_with_progress(
 
     local_db = SessionLocal()
     try:
-        logger.info(f"Processing vectorization for record {record_id}")
-
         # 1. S3에서 PDF 다운로드
         await send_progress(10, progress_queue)
 
@@ -277,7 +192,7 @@ async def _process_vectorization_with_progress(
 
         await send_progress(20, progress_queue)
 
-        # 진행률 콜백 래퍼 함수 (async lambda 대신)
+        # 진행률 콜백 래퍼 함수
         async def progress_wrapper(progress: int):
             await send_progress(progress, progress_queue)
 

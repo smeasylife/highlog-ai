@@ -1,47 +1,46 @@
-cat > .gitignore << 'EOF'
-# Environment variables
-.env
-highschool.pdf
-
-# Config
-# config.py는 git에 포함됨 (민감한 값은 .env에서 관리)
-
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
+*.pyo
+*.pyd
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
+dist/
+build/
+*.so
 venv/
-ENV/
-env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env.local
+.env.*.local
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Tools
+.serena/
+
+# Files
+*.xlsx
+*.xls
+
+# PDF files (사용자 업로드 생활기록부 등)
+*.pdf
+*.PDF
+**/*.pdf
+**/*.PDF
