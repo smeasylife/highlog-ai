@@ -303,8 +303,61 @@ JSON 형식으로 응답하세요."""
             if db:
                 db.close()
     
+    async def follow_up_generator_stream(self, state: InterviewState):
+        """꼬리 질문 생성 (스트리밍)"""
+        try:
+            logger.info(f"Generating follow-up question for: {state.get('current_sub_topic')}")
+
+            # 마지막 답변 가져오기 (state의 last_answer 사용)
+            last_answer = state.get('last_answer', '')
+
+            # ID 리스트로 텍스트 조회
+            context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
+            context_text = "\\n\\n".join(context_chunks)
+
+            # 꼬리 질문 프롬프트
+            prompt = f"""당신은 대학 입시 면접관입니다. 학생의 답변에 대해 꼬리 질문을 생성하세요.
+
+**면접 난이도**: {state['difficulty']}
+**현재 주제**: {state.get('current_sub_topic')}
+**꼬리 질문 횟수**: {state.get('follow_up_count', 0) + 1}회차
+
+**이전 답변**:
+{last_answer}
+
+**관련 학생부 정보**:
+{context_text}
+
+**꼬리 질문 생성 지침**:
+1. 답변에서 언급된 구체적 사례, 판단 근거, 배운 점을 집요하게 캐묻으세요.
+2. "왜 그렇게 생각했나?", "구체적으로 어떤 결과였나?", "그 과정에서 어떤 고민이 있었나?" 등의 패턴 활용
+3. Hard 모드에서는 논리적 허점을 찌르는 압박 질문 생성
+4. 학생부 정보와 교차 검증하여 질문
+
+다음 꼬리 질문을 생성하세요."""
+
+            # 스트리밍 호출 (JSON 스키마 없이 일반 텍스트로 스트리밍)
+            full_response = ""
+            async for chunk in self.client.aio.models.generate_content_stream(
+                model=self.model,
+                contents=prompt
+            ):
+                if chunk.text:
+                    full_response += chunk.text
+                    yield chunk.text  # 실시간 전송
+
+            # state 업데이트를 위한 질문 추출
+            question = full_response.strip()
+            state['last_question'] = question
+            state['follow_up_count'] = state.get('follow_up_count', 0) + 1
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error generating follow-up question: {e}")
+            yield f"\n\n[ERROR: {error_msg}]"
+
     def follow_up_generator(self, state: InterviewState) -> InterviewState:
-        """꼬리 질문 생성"""
+        """꼬리 질문 생성 (비스트리밍 - 호환성 유지)"""
         try:
             logger.info(f"Generating follow-up question for: {state.get('current_sub_topic')}")
 
@@ -344,7 +397,7 @@ JSON 형식으로 응답하세요."""
                 },
                 required=["question"]
             )
-            
+
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
@@ -378,8 +431,68 @@ JSON 형식으로 응답하세요."""
             state['is_finished'] = True
             return state
     
+    async def new_question_generator_stream(self, state: InterviewState):
+        """새로운 주제 첫 질문 생성 (스트리밍)"""
+        try:
+            logger.info(f"Generating first question for topic: {state.get('current_sub_topic')}")
+
+            # ID 리스트로 텍스트 조회
+            context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
+
+            # 🔍 디버깅: 청크 내용 로그 출력
+            logger.info(f"📚 Retrieved {len(context_chunks)} chunks for topic '{state.get('current_sub_topic')}':")
+            for i, chunk in enumerate(context_chunks):
+                logger.info(f"  Chunk {i+1}: {chunk[:300]}...")  # 첫 300자만 출력
+
+            context_text = "\n\n".join(context_chunks)
+
+            # 첫 질문 프롬프트
+            prompt = f"""당신은 대학 입시 면접관입니다. 새로운 주제에 대한 첫 질문을 생성하세요.
+
+**면접 난이도**: {state['difficulty']}
+**새로운 주제**: {state.get('current_sub_topic')}
+
+**관련 학생부 정보**:
+{context_text}
+
+**첫 질문 생성 지침**:
+1. 해당 주제와 관련된 개방형 질문 생성
+2. 학생의 경험과 생각을 자유롭게 표현하게 유도
+3. 구체적인 사례를 요청하는 방식
+
+주제 가이드라인:
+- 출결: 지각/결석 패턴과 사유, 성실성
+- 성적: 전공 과목 성적 추이와 변화 이유
+- 동아리: 프로젝트 내 역할과 기술적 해결 과정
+- 리더십: 갈등 상황에서의 해결 메커니즘
+- 인성/태도: 행특 기록 기반 본인의 대표 특성
+- 진로/자율: 지원 전공 관심 계기와 활동 연결
+- 독서: 도서가 가치관 및 탐구에 미친 영향
+- 봉사: 활동의 지속성과 배운 점
+
+첫 질문을 생성하세요."""
+
+            # 스트리밍 호출 (JSON 스키마 없이 일반 텍스트로 스트리밍)
+            full_response = ""
+            async for chunk in self.client.aio.models.generate_content_stream(
+                model=self.model,
+                contents=prompt
+            ):
+                if chunk.text:
+                    full_response += chunk.text
+                    yield chunk.text  # 실시간 전송
+
+            # state 업데이트를 위한 질문 추출
+            question = full_response.strip()
+            logger.info(f"✅ Generated question: {question}")
+            state['last_question'] = question
+
+        except Exception as e:
+            logger.error(f"Error generating new question: {e}")
+            yield f"\n\n[ERROR: {str(e)}]"
+
     def new_question_generator(self, state: InterviewState) -> InterviewState:
-        """새로운 주제 첫 질문 생성"""
+        """새로운 주제 첫 질문 생성 (비스트리밍 - 호환성 유지)"""
         try:
             logger.info(f"Generating first question for topic: {state.get('current_sub_topic')}")
 
@@ -427,7 +540,7 @@ JSON 형식으로 응답하세요."""
                 },
                 required=["question"]
             )
-            
+
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,

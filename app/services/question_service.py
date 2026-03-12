@@ -1,7 +1,7 @@
-from typing import TypedDict, List, Dict, Any, Optional, Annotated
-from operator import add
+"""질문 생성 서비스 - LangGraph 제거"""
+
+from typing import List, Dict, Any, AsyncGenerator
 from pydantic import BaseModel, Field
-from langgraph.graph import StateGraph, END
 from google import genai
 from google.genai import types
 from config import settings
@@ -31,31 +31,10 @@ class QuestionListResponse(BaseModel):
     questions: List[GeneratedQuestion]
 
 
-# ==================== State ====================
+# ==================== 서비스 클래스 ====================
 
-class QuestionGenerationState(TypedDict):
-    """질문 생성 상태 - Annotated 방식으로 Reducer 사용"""
-    
-    # 고정 값 (덮어쓰기)
-    record_id: int
-    target_school: str
-    target_major: str
-    interview_type: str
-    
-    # 누적 값 (추가 - reducer 사용)
-    processed_categories: Annotated[List[str], add]
-    all_questions: Annotated[List[Dict[str, Any]], add]
-    failed_categories: Annotated[List[str], add]  # 실패한 카테고리 추적
-    
-    # 단일 값 (덮어쓰기)
-    current_category: Optional[str]
-    progress: int
-    status_message: str
-    error: str
-
-
-class QuestionGenerationGraph:
-    """벌크 질문 생성 그래프 (SSE 스트리밍 지원)"""
+class QuestionGenerationService:
+    """벌크 질문 생성 서비스 (SSE 스트리밍 지원)"""
 
     # 카테고리 정의
     CATEGORIES = ["성적", "세특", "창체", "행특", "기타"]
@@ -63,52 +42,36 @@ class QuestionGenerationGraph:
     def __init__(self):
         # Google GenAI 클라이언트 초기화
         self.client = genai.Client(api_key=settings.google_api_key)
-        self.model = "gemini-2.5-flash"  # Free Tier 무제한 (Lite는 하루 20회 제한)
+        self.model = "gemini-2.5-flash"
         self.types = types
 
-        # 그래프 빌드
-        self.graph = self._build_graph()
+    async def generate_questions(
+        self,
+        record_id: int,
+        target_school: str,
+        target_major: str,
+        interview_type: str
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        질문 생성 및 SSE 스트리밍
 
-    def _build_graph(self) -> StateGraph:
-        """LangGraph 빌드 (병렬 처리 방식)"""
-        workflow = StateGraph(QuestionGenerationState)
+        Yields:
+            Dict[str, Any]: 진행 상태 정보
+        """
+        logger.info(f"Initializing question generation for record {record_id}")
 
-        # 노드 추가
-        workflow.add_node("initialize", self.initialize)
-        workflow.add_node("process_all_categories_parallel", self.process_all_categories_parallel)
-        workflow.add_node("finalize", self.finalize)
+        # 1. 초기화
+        yield {
+            "progress": 5,
+            "status_message": "질문 생성을 시작합니다 (병렬 처리 중...)"
+        }
 
-        # 엣지 추가 (순차적 흐름)
-        workflow.set_entry_point("initialize")
-        workflow.add_edge("initialize", "process_all_categories_parallel")
-        workflow.add_edge("process_all_categories_parallel", "finalize")
-        workflow.add_edge("finalize", END)
-
-        # 컴파일
-        return workflow.compile()
-
-    async def initialize(self, state: QuestionGenerationState) -> QuestionGenerationState:
-        """초기화"""
-        logger.info(f"Initializing question generation for record {state['record_id']}")
-
-        state['processed_categories'] = []
-        state['all_questions'] = []
-        state['failed_categories'] = []
-        state['current_category'] = None  # 병렬 처리이므로 단일 카테고리 없음
-        state['progress'] = 5
-        state['status_message'] = "질문 생성을 시작합니다 (병렬 처리 중...)"
-        state['error'] = None
-
-        return state
-
-    async def process_all_categories_parallel(self, state: QuestionGenerationState) -> QuestionGenerationState:
-        """모든 카테고리를 병렬로 처리 ⚡"""
-        record_id = state['record_id']
-        target_school = state['target_school']
-        target_major = state['target_major']
-        interview_type = state['interview_type']
-
+        # 2. 병렬 처리
         logger.info(f"🚀 Starting parallel processing for {len(self.CATEGORIES)} categories")
+
+        all_questions = []
+        processed_categories = []
+        failed_categories = []
 
         # 모든 카테고리에 대한 태스크 생성
         tasks = []
@@ -122,14 +85,10 @@ class QuestionGenerationGraph:
             )
             tasks.append(task)
 
-        # 병렬 실행 (vector_service 패턴 참고)
+        # 병렬 실행
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # 결과 집계
-        all_questions = []
-        processed_categories = []
-        failed_categories = []
-
         for i, result in enumerate(results):
             category = self.CATEGORIES[i]
 
@@ -152,14 +111,23 @@ class QuestionGenerationGraph:
         if failed_categories:
             status_msg += f" (실패: {', '.join(failed_categories)})"
 
-        return {
-            "all_questions": all_questions,
-            "processed_categories": processed_categories,
-            "failed_categories": failed_categories,
-            "current_category": None,
+        yield {
             "progress": progress,
-            "status_message": status_msg,
-            "error": None
+            "status_message": status_msg
+        }
+
+        # 3. 완료
+        if failed_categories:
+            logger.warning(f"⚠️ Failed categories: {failed_categories}")
+            final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문 생성. {len(failed_categories)}개 카테고리({', '.join(failed_categories)}) 실패로 건너뜀."
+        else:
+            logger.info(f"✅ All categories succeeded. Total questions: {len(all_questions)}")
+            final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문이 생성되었습니다."
+
+        yield {
+            "progress": 100,
+            "status_message": final_msg,
+            "all_questions": all_questions
         }
 
     async def _process_single_category(
@@ -172,7 +140,6 @@ class QuestionGenerationGraph:
     ) -> Dict[str, Any]:
         """
         단일 카테고리 처리 (내부 재시도 로직 포함)
-        vector_service의 _parse_pdf_batch_with_gemini 패턴 참고
         """
         max_retries = 2  # 최대 2회 재시도 (총 3회 시도)
 
@@ -223,46 +190,27 @@ class QuestionGenerationGraph:
             logger.error(f"❌ Failed to process {category}: {e}")
             return {"success": False, "questions": [], "reason": str(e)}
 
-    async def finalize(self, state: QuestionGenerationState) -> QuestionGenerationState:
-        """마무리"""
-        failed_cats = state.get('failed_categories', [])
-        total_questions = len(state['all_questions'])
-        
-        if failed_cats:
-            logger.warning(f"⚠️ Failed categories: {failed_cats}")
-            state['status_message'] = f"질문 생성 완료! 총 {total_questions}개 질문 생성. {len(failed_cats)}개 카테고리({', '.join(failed_cats)}) 실패로 건너뜀."
-        else:
-            logger.info(f"✅ All categories succeeded. Total questions: {total_questions}")
-            state['status_message'] = f"질문 생성 완료! 총 {total_questions}개 질문이 생성되었습니다."
-
-        state['progress'] = 100
-        state['current_category'] = None
-
-        return state
-
     async def _retrieve_relevant_chunks(
         self,
         record_id: int,
         category: str
     ) -> List[Dict[str, Any]]:
-        """
-        벡터 DB에서 관련 청크 검색
-        """
+        """벡터 DB에서 관련 청크 검색"""
         from app.models import RecordChunk
         from app.database import get_db
-        
+
         try:
             # DB 세션 생성
             db_generator = get_db()
             db = next(db_generator)
-            
+
             try:
                 # 카테고리별 청크 조회 (record_id와 category로 필터링)
                 chunks = db.query(RecordChunk).filter(
                     RecordChunk.record_id == record_id,
                     RecordChunk.category == category
                 ).order_by(RecordChunk.chunk_index).all()
-                
+
                 # 딕셔너리 형태로 변환
                 result = [
                     {
@@ -271,13 +219,13 @@ class QuestionGenerationGraph:
                     }
                     for chunk in chunks
                 ]
-                
+
                 logger.info(f"Retrieved {len(result)} chunks for category {category}")
                 return result
-                
+
             finally:
                 db.close()
-                
+
         except Exception as e:
             logger.error(f"Error retrieving chunks for category {category}: {e}")
             return []
@@ -290,9 +238,7 @@ class QuestionGenerationGraph:
         target_major: str,
         interview_type: str
     ) -> List[Dict[str, Any]]:
-        """
-        카테고리별 질문 생성 (google.genai 사용)
-        """
+        """카테고리별 질문 생성 (google.genai 사용)"""
         try:
             # 청크 텍스트 결합 (모든 청크 사용)
             logger.info(f"Generating questions for {category}: using all {len(chunks)} chunks")
@@ -375,14 +321,6 @@ class QuestionGenerationGraph:
             logger.error(f"Error generating questions for {category}: {e}")
             return []
 
-    async def astream(self, state: QuestionGenerationState):
-        """
-        비동기 스트리밍 실행 (SSE용)
-        """
-        async for event in self.graph.astream(state):
-            # 각 노드 실행 후 상태를 yield
-            for node_name, node_state in event.items():
-                yield node_state
 
-
-question_generation_graph = QuestionGenerationGraph()
+# 전역 인스턴스
+question_service = QuestionGenerationService()

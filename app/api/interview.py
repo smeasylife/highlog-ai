@@ -2,7 +2,8 @@
 
 간소화된 API 구조:
 - POST /initialize: 면접 초기화 (첫 답변 처리)
-- POST /chat/text/{thread_id}: 텍스트 기반 면접
+- POST /chat/text/{thread_id}: 텍스트 기반 면접 (비스트리밍)
+- POST /chat/text/{thread_id}/stream: 텍스트 기반 면접 (SSE 스트리밍)
 - POST /chat/audio/{thread_id}: 오디오 기반 면접
 
 상태 저장은 LangGraph의 Checkpointer가 자동으로 처리합니다.
@@ -10,8 +11,10 @@
 import logging
 import io
 import uuid
+import json
 from typing import Dict, Any
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 
 from app.schemas import (
     InitializeInterviewRequest,
@@ -529,4 +532,93 @@ async def analyze_interview_result(
         raise
     except Exception as e:
         logger.error(f"Error analyzing interview result: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 텍스트 기반 면접 (SSE 스트리밍) ====================
+
+@router.post("/chat/text/{thread_id}/stream")
+async def chat_text_stream(
+    thread_id: str,
+    request: SimpleChatRequest,
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """
+    텍스트 기반 실시간 면접 (SSE 스트리밍)
+
+    ChatGPT처럼 질문이 토큰 단위로 스트리밍됩니다.
+
+    Args:
+        thread_id: LangGraph thread ID (URL 경로 파라미터)
+        request: 간소화된 채팅 요청 (JSON body)
+            - answer: 사용자 답변
+            - response_time: 답변 소요 시간 (초)
+
+    Returns:
+        SSE 스트림: 질문 텍스트를 토큰 단위로 실시간 전송
+    """
+    try:
+        logger.info(f"Text chat stream request for thread_id: {thread_id}")
+
+        # thread_id에서 user_id 추출하여 권한 확인
+        parts = thread_id.split('_')
+        if len(parts) < 2 or parts[1] != str(current_user.user_id):
+            raise HTTPException(status_code=403, detail="Access denied to this interview")
+
+        async def generate():
+            """SSE 스트리밍 생성기"""
+            try:
+                # 1. 현재 상태 조회
+                current_state = interview_graph.get_state(thread_id)
+
+                # 2. 답변 정보 설정
+                current_state['current_user_answer'] = request.answer
+                current_state['current_response_time'] = request.response_time
+
+                # 3. 분석기 실행 (다음 액션 결정)
+                updated_state = interview_graph.analyzer(current_state)
+                next_action = updated_state.get('next_action', 'wrap_up')
+
+                # 4. 액션에 따라 질문 생성 및 스트리밍
+                if next_action == "follow_up":
+                    # 꼬리 질문 스트리밍
+                    async for token in interview_graph.follow_up_generator_stream(updated_state):
+                        yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
+
+                elif next_action == "new_topic":
+                    # 새 주제 검색
+                    updated_state = interview_graph.retrieve_new_topic(updated_state)
+
+                    # 첫 질문 스트리밍
+                    async for token in interview_graph.new_question_generator_stream(updated_state):
+                        yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
+
+                else:  # wrap_up
+                    # 종료 메시지
+                    closing_message = "면접을 종료합니다. 수고하셨습니다."
+                    yield f"data: {json.dumps({'token': closing_message, 'is_finished': True}, ensure_ascii=False)}\n\n"
+                    yield f"data: [DONE]\n\n"
+                    return
+
+                # 완료 신호
+                yield f"data: [DONE]\n\n"
+
+            except Exception as e:
+                logger.error(f"Error in stream generation: {e}")
+                yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in chat_text_stream: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -10,7 +10,7 @@ import io
 from app.database import get_db
 from app.models import StudentRecord, Question, QuestionSet
 from app.services.vector_service import vector_service
-from app.graphs.record_analysis import question_generation_graph, QuestionGenerationState
+from app.services.question_service import question_service
 from app.schemas import CreateRecordRequest, VectorizeRequest, GenerateQuestionsRequest, SSEProgressEvent, QuestionData
 from app.core.dependencies import get_current_user, CurrentUser
 
@@ -270,23 +270,16 @@ async def question_generation_stream(
 
         logger.info(f"QuestionSet created: id={question_set.id}")
 
-        # 2. 초기 상태 생성
-        initial_state = QuestionGenerationState(
+        # 2. 서비스 실행 (스트리밍)
+        final_update = {}
+        async for state_update in question_service.generate_questions(
             record_id=record_id,
             target_school=request.target_school or "알 수 없음",
             target_major=request.target_major or "알 수 없음",
-            interview_type=request.interview_type or "종합전형",
-            current_category=None,
-            processed_categories=[],
-            all_questions=[],
-            progress=0,
-            status_message="",
-            error=None
-        )
-
-        # 3. LangGraph 실행 (스트리밍)
-        async for state_update in question_generation_graph.astream(initial_state):
+            interview_type=request.interview_type or "종합전형"
+        ):
             # 진행률 이벤트 전송
+            final_update = state_update
             event = SSEProgressEvent(
                 type="processing",
                 progress=state_update.get('progress', 0),
@@ -294,21 +287,8 @@ async def question_generation_stream(
             )
             yield f"data: {event.model_dump_json()}\n\n"
 
-        # 4. 최종 상태 수신
-        final_state = state_update
-
-        # 5. 에러 체크
-        if final_state.get('error'):
-            error_event = SSEProgressEvent(
-                type="error",
-                progress=0,
-                message=final_state.get('error', '에러가 발생했습니다')
-            )
-            yield f"data: {error_event.model_dump_json()}\n\n"
-            return
-
-        # 6. 질문 DB 저장 (set_id로 연결)
-        questions_to_save = final_state.get('all_questions', [])
+        # 3. 질문 DB 저장 (set_id로 연결)
+        questions_to_save = final_update.get('all_questions', [])
 
         if questions_to_save:
             for q in questions_to_save:
@@ -327,7 +307,7 @@ async def question_generation_stream(
             db.commit()
             logger.info(f"Saved {len(questions_to_save)} questions for question_set {question_set.id}")
 
-        # 7. 완료 이벤트 전송
+        # 4. 완료 이벤트 전송
         complete_event = SSEProgressEvent(
             type="complete",
             progress=100,

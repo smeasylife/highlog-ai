@@ -23,7 +23,7 @@ Gemini 2.5 Flash/Pro 기반의 생활기록부 맞춤형 면접 질문 생성 �
 **Phase 2: Bulk Question Generation** (Generate 버튼 트리거)
 1. SSE Handshake - Spring Boot와 FastAPI 간 스트림 연결
 2. Metadata Search - record_id 기반으로 벡터 DB에서 카테고리별 데이터 추출
-3. LangGraph Generator - Gemini 2.5 Flash가 영역별 질문(5개 이하) 생성
+3. Question Service - Gemini 2.5 Flash가 영역별 질문(5개 이하) 생성 (병렬 처리)
 4. Progress Streaming - 진행률(%)과 상태 메시지 SSE로 전송
 5. Finalization - 생성된 질문을 `questions` 테이블에 벌크 저장
 
@@ -84,7 +84,7 @@ ai-service/
 │   ├── api/              # API 라우터
 │   │   └── records.py    # 생기부 벡터화 & 질문 생성 API
 │   ├── graphs/           # LangGraph 정의
-│   │   └── record_analysis.py   # 벌크 질문 생성 그래프
+│   │   └── question_generation.py   # 벌크 질문 생성 그래프
 │   ├── models/           # SQLAlchemy 모델
 │   │   ├── User, StudentRecord, RecordChunk, Question
 │   ├── services/         # 비즈니스 로직
