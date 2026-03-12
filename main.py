@@ -26,14 +26,10 @@ app = FastAPI(
     debug=settings.debug
 )
 
-# CORS 미들웨어 설정 (Spring Boot와 동일하게 서버 자체에서 처리)
+# CORS 미들웨어 설정 (환경변수에서 origins 읽어옴)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://onedaypocket.shop",
-        "https://www.onedaypocket.shop",
-        "http://localhost:5173",
-    ],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
