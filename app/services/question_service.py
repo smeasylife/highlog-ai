@@ -66,57 +66,76 @@ class QuestionGenerationService:
             "status_message": "질문 생성을 시작합니다 (병렬 처리 중...)"
         }
 
-        # 2. 병렬 처리
+        # 2. 병렬 처리 (완료되는 대로 실시간 진행률 전송)
         logger.info(f"🚀 Starting parallel processing for {len(self.CATEGORIES)} categories")
 
         all_questions = []
         processed_categories = []
         failed_categories = []
 
-        # 모든 카테고리에 대한 태스크 생성
-        tasks = []
+        total_categories = len(self.CATEGORIES)
+        completed_count = 0
+        base_progress = 10
+        progress_per_category = (80 - base_progress) // total_categories
+
+        # 카테고리와 태스크 매핑 (완료 시 카테고리 이름 추적용)
+        category_tasks = {}
         for category in self.CATEGORIES:
-            task = self._process_single_category(
-                record_id=record_id,
-                category=category,
-                target_school=target_school,
-                target_major=target_major,
-                interview_type=interview_type
+            # create_task로 감싸서 Task 객체 생성
+            task = asyncio.create_task(
+                self._process_single_category(
+                    record_id=record_id,
+                    category=category,
+                    target_school=target_school,
+                    target_major=target_major,
+                    interview_type=interview_type
+                )
             )
-            tasks.append(task)
+            category_tasks[task] = category
 
-        # 병렬 실행
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # 병렬 실행 (완료되는 대로 처리)
+        for completed_task in asyncio.as_completed(category_tasks.keys()):
+            category = category_tasks[completed_task]
+            completed_count += 1
 
-        # 결과 집계
-        for i, result in enumerate(results):
-            category = self.CATEGORIES[i]
+            try:
+                result = await completed_task
 
-            if isinstance(result, Exception):
-                logger.error(f"❌ [{category}] Failed with exception: {str(result)[:80]}")
+                if isinstance(result, Exception):
+                    logger.error(f"❌ [{category}] Failed with exception: {str(result)[:80]}")
+                    failed_categories.append(category)
+                elif result and result.get('success'):
+                    questions = result.get('questions', [])
+                    all_questions.extend(questions)
+                    processed_categories.append(category)
+                    logger.info(f"✅ [{category}] Generated {len(questions)} questions")
+                else:
+                    logger.warning(f"⚠️ [{category}] No questions generated")
+                    failed_categories.append(category)
+
+                # 완료될 때마다 진행률 실시간 전송
+                progress = base_progress + completed_count * progress_per_category
+                status_msg = f"{category} 영역 완료 ({completed_count}/{total_categories})"
+
+                yield {
+                    "progress": min(progress, 85),
+                    "status_message": status_msg,
+                    "current_category": category,
+                    "completed_count": completed_count,
+                    "total_count": total_categories
+                }
+
+            except Exception as e:
+                logger.error(f"❌ [{category}] Failed with exception: {str(e)[:80]}")
                 failed_categories.append(category)
-            elif result and result.get('success'):
-                questions = result.get('questions', [])
-                all_questions.extend(questions)
-                processed_categories.append(category)
-                logger.info(f"✅ [{category}] Generated {len(questions)} questions")
-            else:
-                logger.warning(f"⚠️ [{category}] No questions generated")
-                failed_categories.append(category)
 
-        # 진행률 계산
-        progress = 90
-        status_msg = f"병렬 처리 완료! {len(processed_categories)}/{len(self.CATEGORIES)} 카테고리 성공"
-
-        if failed_categories:
-            status_msg += f" (실패: {', '.join(failed_categories)})"
-
+        # 3. 집계 완료
         yield {
-            "progress": progress,
-            "status_message": status_msg
+            "progress": 90,
+            "status_message": f"모든 영역 처리 완료! {len(processed_categories)}/{total_categories} 카테고리 성공"
         }
 
-        # 3. 완료
+        # 4. 최종 완료
         if failed_categories:
             logger.warning(f"⚠️ Failed categories: {failed_categories}")
             final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문 생성. {len(failed_categories)}개 카테고리({', '.join(failed_categories)}) 실패로 건너뜀."
@@ -205,19 +224,22 @@ class QuestionGenerationService:
             db = next(db_generator)
 
             try:
-                # 카테고리별 청크 조회 (record_id와 category로 필터링)
-                chunks = db.query(RecordChunk).filter(
+                # 카테고리별 청크 조회 (필요한 컬럼만 가져오기)
+                chunk_data = db.query(
+                    RecordChunk.chunk_text,
+                    RecordChunk.category
+                ).filter(
                     RecordChunk.record_id == record_id,
                     RecordChunk.category == category
                 ).order_by(RecordChunk.chunk_index).all()
 
-                # 딕셔너리 형태로 변환
+                # 튜플 리스트를 딕셔너리로 변환
                 result = [
                     {
                         "text": chunk.chunk_text,
                         "category": chunk.category
                     }
-                    for chunk in chunks
+                    for chunk in chunk_data
                 ]
 
                 logger.info(f"Retrieved {len(result)} chunks for category {category}")
