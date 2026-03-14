@@ -572,8 +572,8 @@ async def chat_text_stream(
                 current_state = interview_graph.get_state(thread_id)
 
                 # 2. 답변 정보 설정
-                current_state['current_user_answer'] = request.answer
-                current_state['current_response_time'] = request.response_time
+                current_state['last_answer'] = request.answer
+                current_state['last_response_time'] = request.response_time
 
                 # 3. 분석기 실행 (다음 액션 결정)
                 updated_state = interview_graph.analyzer(current_state)

@@ -27,7 +27,7 @@ class InterviewState(TypedDict):
     # 기본 설정
     difficulty: str                    # 면접 난이도 (Easy, Normal, Hard)
     remaining_time: int                # 남은 시간 (초 단위)
-    interview_stage: str               # [INTRO, MAIN, WRAP_UP]
+    is_intro: bool                     # 첫 시작 여부 (INTRO 단계인지)
 
     # 대화 컨텍스트
     current_context: List[int]         # 현재 질문/주제와 관련된 학생부 청크 ID 리스트
@@ -42,13 +42,10 @@ class InterviewState(TypedDict):
     session_id: int                    # InterviewSession ID (데이터베이스 외래키)
     record_id: int                     # 생기부 ID
 
-    # 현재 처리 중인 답변 (checkpoint에 저장하지 않음 - pass through)
-    current_user_answer: str
-    current_response_time: int
-
-    # 마지막 질문/답변 (메모리용, checkpoint에 저장되지 않음)
-    last_question: str = ""
-    last_answer: str = ""
+    # 마지막 질문/답변
+    last_question: str
+    last_answer: str
+    last_response_time: int            # 마지막 답변 소요 시간 (초)
 
 
 # ==================== Pydantic 모델 ====================
@@ -138,28 +135,31 @@ class InterviewGraph:
         try:
             logger.info(f"Analyzing answer for topic: {state.get('current_sub_topic', 'INTRO')}")
 
-            # 꼬리 질문 1회 이미 했으면 무조건 다음 주제로
-            if state.get('follow_up_count', 0) >= 1:
+            # 남은 시간 부족하면 즉시 종료 (API 호출 스킵)
+            if state['remaining_time'] < 30:
+                logger.info(f"Time remaining ({state['remaining_time']}s) < 30s, wrapping up")
+                state['next_action'] = "wrap_up"
+                return state
+
+            # 꼬리 질문 2회 이미 했으면 무조건 다음 주제로
+            if state.get('follow_up_count', 0) >= 2:
                 logger.info("Already did follow-up, moving to new topic")
                 state['next_action'] = "new_topic"
 
                 # 답변 로그 저장 (InterviewSession에만)
                 log_entry = {
                     "question": state.get('last_question', ''),
-                    "answer": state.get('current_user_answer', ''),
-                    "response_time": state.get('current_response_time', 0),
+                    "answer": state.get('last_answer', ''),
+                    "response_time": state.get('last_response_time', 0),
                     "sub_topic": state.get('current_sub_topic', '')
                 }
                 self._save_interview_log(state, log_entry)
 
-                # 마지막 답변 업데이트
-                state['last_answer'] = state.get('current_user_answer', '')
-
                 return state
 
             # 현재 답변 정보 가져오기
-            user_answer = state.get('current_user_answer', '')
-            response_time = state.get('current_response_time', 0)
+            user_answer = state.get('last_answer', '')
+            response_time = state.get('last_response_time', 0)
 
             # 마지막 질문 가져오기 (state의 last_question 사용)
             last_question = state.get('last_question', '')
@@ -220,7 +220,7 @@ JSON 형식으로 응답하세요."""
             result = json.loads(response.text)
 
             # INTRO 단계(자기소개)는 이미 initialize_interview에서 저장했으므로 건너뜀
-            if state.get('interview_stage') != 'INTRO':
+            if not state.get('is_intro', False):
                 log_entry = {
                     "question": last_question,
                     "answer": user_answer,
@@ -229,8 +229,9 @@ JSON 형식으로 응답하세요."""
                 }
                 self._save_interview_log(state, log_entry)
 
-            # 마지막 답변 업데이트
-            state['last_answer'] = user_answer
+            # 첫 호출 후 is_intro를 False로 변경
+            if state.get('is_intro', False):
+                state['is_intro'] = False
 
             # 다음 액션 저장
             state['next_action'] = result['action']
@@ -266,15 +267,12 @@ JSON 형식으로 응답하세요."""
             ]
 
             if not remaining_topics:
-                logger.info("No more topics available")
                 state['next_action'] = "wrap_up"
                 return state
 
             # 랜덤 선택 (또는 전략적 선택)
             import random
             new_topic = random.choice(remaining_topics)
-
-            logger.info(f"Selected new topic: {new_topic}")
 
             # 벡터 DB에서 관련 청크 검색 (DB 세션 재사용)
             from app.services.vector_service import vector_service
@@ -306,8 +304,6 @@ JSON 형식으로 응답하세요."""
     async def follow_up_generator_stream(self, state: InterviewState):
         """꼬리 질문 생성 (스트리밍)"""
         try:
-            logger.info(f"Generating follow-up question for: {state.get('current_sub_topic')}")
-
             # 마지막 답변 가져오기 (state의 last_answer 사용)
             last_answer = state.get('last_answer', '')
 
@@ -359,8 +355,6 @@ JSON 형식으로 응답하세요."""
     def follow_up_generator(self, state: InterviewState) -> InterviewState:
         """꼬리 질문 생성 (비스트리밍 - 호환성 유지)"""
         try:
-            logger.info(f"Generating follow-up question for: {state.get('current_sub_topic')}")
-
             # 마지막 답변 가져오기 (state의 last_answer 사용)
             last_answer = state.get('last_answer', '')
 
@@ -607,13 +601,10 @@ JSON 형식으로 응답하세요."""
 
 상세 분석 결과는 면접 종료 후 확인해주세요."""
 
-            state['interview_stage'] = "WRAP_UP"
-
             return state
 
         except Exception as e:
             logger.error(f"Error in wrap_up: {e}")
-            state['interview_stage'] = "WRAP_UP"
             return state
     
 
@@ -670,8 +661,8 @@ JSON 형식으로 응답하세요."""
             # 초기 상태 생성
             initial_state: InterviewState = {
                 'difficulty': difficulty,
-                'remaining_time': 600,  # 10분
-                'interview_stage': 'INTRO',
+                'remaining_time': 600 - response_time,  # 첫 답변 소요 시간 차감
+                'is_intro': True,  # 첫 시작 표시
                 'current_context': [],
                 'current_sub_topic': '',
                 'asked_sub_topics': [],
@@ -679,10 +670,9 @@ JSON 형식으로 응답하세요."""
                 'follow_up_count': 0,
                 'session_id': interview_session.id,  # 세션 ID 저장
                 'record_id': record_id,
-                'current_user_answer': first_answer,
-                'current_response_time': response_time,
                 'last_question': '자기소개 부탁드립니다.',
-                'last_answer': ''
+                'last_answer': first_answer,
+                'last_response_time': response_time
             }
 
             # process_answer 재사용
@@ -752,13 +742,9 @@ JSON 형식으로 응답하세요."""
             str: 다음 질문 텍스트
         """
         try:
-            # 현재 답변 정보만 state에 설정 (pass-through 필드)
-            state['current_user_answer'] = user_answer
-            state['current_response_time'] = response_time
-
-            # 남은 시간 체크
-            if state['remaining_time'] < 30:
-                state['next_action'] = "wrap_up"
+            # 현재 답변 정보를 state에 설정
+            state['last_answer'] = user_answer
+            state['last_response_time'] = response_time
 
             # PostgresSaver 컨텍스트 내에서 그래프 실행
             with PostgresSaver.from_conn_string(self._conn_string) as checkpointer:
