@@ -29,6 +29,10 @@ class InterviewState(TypedDict):
     remaining_time: int                # 남은 시간 (초 단위)
     is_intro: bool                     # 첫 시작 여부 (INTRO 단계인지)
 
+    # 지원 대학/학과 정보
+    target_university: str             # 지원 대학교 (예: 가천대학교, 한양대학교)
+    target_department: str             # 지원 학과 (예: 컴퓨터공학과)
+
     # 대화 컨텍스트
     current_context: List[int]         # 현재 질문/주제와 관련된 학생부 청크 ID 리스트
     current_sub_topic: str             # 현재 진행 중인 세부 주제
@@ -102,9 +106,9 @@ class InterviewGraph:
 
         # 노드 추가
         workflow.add_node("analyzer", self.analyzer)
+        workflow.add_node("follow_up_llm", self.follow_up_llm)
+        workflow.add_node("new_question_llm", self.new_question_llm)
         workflow.add_node("retrieve_new_topic", self.retrieve_new_topic)
-        workflow.add_node("follow_up_generator", self.follow_up_generator)
-        workflow.add_node("new_question_generator", self.new_question_generator)
         workflow.add_node("wrap_up", self.wrap_up)
 
         # 엔트리 포인트
@@ -115,16 +119,16 @@ class InterviewGraph:
             "analyzer",
             self.decide_next_action,
             {
-                "follow_up": "follow_up_generator",
+                "follow_up": "follow_up_llm",
                 "new_topic": "retrieve_new_topic",
                 "wrap_up": "wrap_up"
             }
         )
 
         # 일반 엣지
-        workflow.add_edge("retrieve_new_topic", "new_question_generator")
-        workflow.add_edge("follow_up_generator", END)
-        workflow.add_edge("new_question_generator", END)
+        workflow.add_edge("follow_up_llm", END)
+        workflow.add_edge("retrieve_new_topic", "new_question_llm")
+        workflow.add_edge("new_question_llm", END)
         workflow.add_edge("wrap_up", END)
 
         return workflow
@@ -135,13 +139,24 @@ class InterviewGraph:
         try:
             logger.info(f"Analyzing answer for topic: {state.get('current_sub_topic', 'INTRO')}")
 
-            # 남은 시간 부족하면 즉시 종료 (API 호출 스킵)
+            # 1. 남은 시간 부족하면 즉시 종료 (API 호출 스킵)
             if state['remaining_time'] < 30:
                 logger.info(f"Time remaining ({state['remaining_time']}s) < 30s, wrapping up")
                 state['next_action'] = "wrap_up"
                 return state
 
-            # 꼬리 질문 2회 이미 했으면 무조건 다음 주제로
+            # 2. 남은 주제 없으면 즉시 종료 (API 호출 스킵)
+            remaining_topics = [
+                topic for topic in SUB_TOPICS
+                if topic not in state.get('asked_sub_topics', [])
+            ]
+
+            if not remaining_topics:
+                logger.info("No more topics available, wrapping up")
+                state['next_action'] = "wrap_up"
+                return state
+
+            # 3. 꼬리 질문 2회 이미 했으면 무조건 다음 주제로
             if state.get('follow_up_count', 0) >= 2:
                 logger.info("Already did follow-up, moving to new topic")
                 state['next_action'] = "new_topic"
@@ -260,17 +275,13 @@ JSON 형식으로 응답하세요."""
         """새로운 주제 검색"""
         db = None
         try:
-            # 미중복 주제 선택
+            # 미중복 주제 선택 (analyzer에서 이미 체크했으므로 남은 주제 있음 guaranteed)
             remaining_topics = [
                 topic for topic in SUB_TOPICS
                 if topic not in state.get('asked_sub_topics', [])
             ]
 
-            if not remaining_topics:
-                state['next_action'] = "wrap_up"
-                return state
-
-            # 랜덤 선택 (또는 전략적 선택)
+            # 랜덤 선택
             import random
             new_topic = random.choice(remaining_topics)
 
@@ -301,8 +312,8 @@ JSON 형식으로 응답하세요."""
             if db:
                 db.close()
     
-    async def follow_up_generator_stream(self, state: InterviewState):
-        """꼬리 질문 생성 (스트리밍)"""
+    async def follow_up_llm(self, state: InterviewState) -> InterviewState:
+        """꼬리 질문 생성 (LangGraph 노드용 - LLM 토큰 스트리밍 지원)"""
         try:
             # 마지막 답변 가져오기 (state의 last_answer 사용)
             last_answer = state.get('last_answer', '')
@@ -332,7 +343,7 @@ JSON 형식으로 응답하세요."""
 
 다음 꼬리 질문을 생성하세요."""
 
-            # 스트리밍 호출 (JSON 스키마 없이 일반 텍스트로 스트리밍)
+            # Gemini 스트리밍 호출 (astream_events로 토큰 캡처 가능)
             full_response = ""
             async for chunk in self.client.aio.models.generate_content_stream(
                 model=self.model,
@@ -340,93 +351,22 @@ JSON 형식으로 응답하세요."""
             ):
                 if chunk.text:
                     full_response += chunk.text
-                    yield chunk.text  # 실시간 전송
 
-            # state 업데이트를 위한 질문 추출
+            # state 업데이트
             question = full_response.strip()
             state['last_question'] = question
             state['follow_up_count'] = state.get('follow_up_count', 0) + 1
 
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Error generating follow-up question: {e}")
-            yield f"\n\n[ERROR: {error_msg}]"
-
-    def follow_up_generator(self, state: InterviewState) -> InterviewState:
-        """꼬리 질문 생성 (비스트리밍 - 호환성 유지)"""
-        try:
-            # 마지막 답변 가져오기 (state의 last_answer 사용)
-            last_answer = state.get('last_answer', '')
-
-            # ID 리스트로 텍스트 조회
-            context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
-            context_text = "\\n\\n".join(context_chunks)
-
-            # 꼬리 질문 프롬프트
-            prompt = f"""당신은 대학 입시 면접관입니다. 학생의 답변에 대해 꼬리 질문을 생성하세요.
-
-**면접 난이도**: {state['difficulty']}
-**현재 주제**: {state.get('current_sub_topic')}
-**꼬리 질문 횟수**: {state.get('follow_up_count', 0) + 1}회차
-
-**이전 답변**:
-{last_answer}
-
-**관련 학생부 정보**:
-{context_text}
-
-**꼬리 질문 생성 지침**:
-1. 답변에서 언급된 구체적 사례, 판단 근거, 배운 점을 집요하게 캐묻으세요.
-2. "왜 그렇게 생각했나?", "구체적으로 어떤 결과였나?", "그 과정에서 어떤 고민이 있었나?" 등의 패턴 활용
-3. Hard 모드에서는 논리적 허점을 찌르는 압박 질문 생성
-4. 학생부 정보와 교차 검증하여 질문
-
-다음 꼬리 질문을 생성하세요."""
-
-            # JSON 스키마 (context_summary 제거)
-            schema = self.types.Schema(
-                type=self.types.Type.OBJECT,
-                properties={
-                    "question": self.types.Schema(type=self.types.Type.STRING)
-                },
-                required=["question"]
-            )
-
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=self.types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                    temperature=0.8
-                )
-            )
-
-            result = json.loads(response.text)
-
-            # 마지막 질문 업데이트 (state에만 저장, checkpoint 아님)
-            state['last_question'] = result['question']
-            state['follow_up_count'] = state.get('follow_up_count', 0) + 1
-
+            logger.info(f"Generated follow-up question: {question[:100]}...")
             return state
 
         except Exception as e:
-            error_msg = str(e)
             logger.error(f"Error generating follow-up question: {e}")
-
-            # 429 할당량 초과 에러 처리
-            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                state['error'] = "API 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요."
-                state['is_finished'] = True
-                return state
-
-            # 그 외 에러
-            state['error'] = f"면접 진행 중 오류가 발생했습니다: {error_msg}"
-            state['is_finished'] = True
+            state['last_question'] = "죄송합니다. 질문 생성 중 오류가 발생했습니다."
             return state
-    
-    async def new_question_generator_stream(self, state: InterviewState):
-        """새로운 주제 첫 질문 생성 (스트리밍)"""
+
+    async def new_question_llm(self, state: InterviewState) -> InterviewState:
+        """새로운 주제 첫 질문 생성 (LangGraph 노드용 - LLM 토큰 스트리밍 지원)"""
         try:
             logger.info(f"Generating first question for topic: {state.get('current_sub_topic')}")
 
@@ -466,7 +406,7 @@ JSON 형식으로 응답하세요."""
 
 첫 질문을 생성하세요."""
 
-            # 스트리밍 호출 (JSON 스키마 없이 일반 텍스트로 스트리밍)
+            # Gemini 스트리밍 호출 (astream_events로 토큰 캡처 가능)
             full_response = ""
             async for chunk in self.client.aio.models.generate_content_stream(
                 model=self.model,
@@ -474,91 +414,19 @@ JSON 형식으로 응답하세요."""
             ):
                 if chunk.text:
                     full_response += chunk.text
-                    yield chunk.text  # 실시간 전송
 
-            # state 업데이트를 위한 질문 추출
+            # state 업데이트
             question = full_response.strip()
             logger.info(f"✅ Generated question: {question}")
             state['last_question'] = question
 
-        except Exception as e:
-            logger.error(f"Error generating new question: {e}")
-            yield f"\n\n[ERROR: {str(e)}]"
-
-    def new_question_generator(self, state: InterviewState) -> InterviewState:
-        """새로운 주제 첫 질문 생성 (비스트리밍 - 호환성 유지)"""
-        try:
-            logger.info(f"Generating first question for topic: {state.get('current_sub_topic')}")
-
-            # ID 리스트로 텍스트 조회
-            context_chunks = self._get_chunks_by_ids(state.get('current_context', []))
-
-            # 🔍 디버깅: 청크 내용 로그 출력
-            logger.info(f"📚 Retrieved {len(context_chunks)} chunks for topic '{state.get('current_sub_topic')}':")
-            for i, chunk in enumerate(context_chunks):
-                logger.info(f"  Chunk {i+1}: {chunk[:300]}...")  # 첫 300자만 출력
-
-            context_text = "\n\n".join(context_chunks)
-
-            # 첫 질문 프롬프트
-            prompt = f"""당신은 대학 입시 면접관입니다. 새로운 주제에 대한 첫 질문을 생성하세요.
-
-**면접 난이도**: {state['difficulty']}
-**새로운 주제**: {state.get('current_sub_topic')}
-
-**관련 학생부 정보**:
-{context_text}
-
-**첫 질문 생성 지침**:
-1. 해당 주제와 관련된 개방형 질문 생성
-2. 학생의 경험과 생각을 자유롭게 표현하게 유도
-3. 구체적인 사례를 요청하는 방식
-
-주제 가이드라인:
-- 출결: 지각/결석 패턴과 사유, 성실성
-- 성적: 전공 과목 성적 추이와 변화 이유
-- 동아리: 프로젝트 내 역할과 기술적 해결 과정
-- 리더십: 갈등 상황에서의 해결 메커니즘
-- 인성/태도: 행특 기록 기반 본인의 대표 특성
-- 진로/자율: 지원 전공 관심 계기와 활동 연결
-- 독서: 도서가 가치관 및 탐구에 미친 영향
-- 봉사: 활동의 지속성과 배운 점
-
-첫 질문을 생성하세요."""
-
-            # JSON 스키마 (context_summary 제거)
-            schema = self.types.Schema(
-                type=self.types.Type.OBJECT,
-                properties={
-                    "question": self.types.Schema(type=self.types.Type.STRING)
-                },
-                required=["question"]
-            )
-
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config={
-    "response_mime_type": "application/json",
-    "response_json_schema": schema,
-}
-            )
-
-            result = json.loads(response.text)
-
-            # 🔍 디버깅: 생성된 질문 로그
-            logger.info(f"✅ Generated question: {result['question']}")
-
-            # 마지막 질문 업데이트 (state에만 저장, checkpoint 아님)
-            state['last_question'] = result['question']
-
             return state
 
         except Exception as e:
             logger.error(f"Error generating new question: {e}")
-            # 에러 발생 시 빈 질문 반환
+            state['last_question'] = "죄송합니다. 질문 생성 중 오류가 발생했습니다."
             return state
-    
+
     def wrap_up(self, state: InterviewState) -> InterviewState:
         """면접 종료 및 요약 생성"""
         db = None
@@ -608,34 +476,38 @@ JSON 형식으로 응답하세요."""
             return state
     
 
-    def initialize_interview(
+    async def initialize_interview_state(
         self,
         user_id: int,
         record_id: int,
         difficulty: str,
+        target_university: str,
+        target_department: str,
         first_answer: str,
         response_time: int,
         thread_id: str,
         mode: str = "TEXT"
-    ) -> Dict[str, Any]:
+    ) -> InterviewState:
         """
-        면접 초기화 (첫 답변 처리)
+        면접 초기 상태 생성 (첫 답변 처리)
 
         Args:
             user_id: 사용자 ID
             record_id: 생기부 ID
             difficulty: 난이도 (Easy, Normal, Hard)
+            target_university: 지원 대학교 (예: 가천대학교, 한양대학교)
+            target_department: 지원 학과 (예: 컴퓨터공학과)
             first_answer: 첫 답변 (자기소개)
             response_time: 답변 소요 시간
             thread_id: LangGraph thread ID
             mode: 면접 방식 (TEXT, AUDIO)
 
         Returns:
-            Dict with next_question, updated_state, is_finished
+            InterviewState: 초기 상태
         """
         db = None
         try:
-            logger.info(f"Initializing interview for record {record_id}, difficulty: {difficulty}, mode: {mode}")
+            logger.info(f"Initializing interview for record {record_id}, university: {target_university}, department: {target_department}, difficulty: {difficulty}, mode: {mode}")
 
             # InterviewSession 생성
             db = SessionLocal()
@@ -663,6 +535,8 @@ JSON 형식으로 응답하세요."""
                 'difficulty': difficulty,
                 'remaining_time': 600 - response_time,  # 첫 답변 소요 시간 차감
                 'is_intro': True,  # 첫 시작 표시
+                'target_university': target_university,
+                'target_department': target_department,
                 'current_context': [],
                 'current_sub_topic': '',
                 'asked_sub_topics': [],
@@ -675,13 +549,7 @@ JSON 형식으로 응답하세요."""
                 'last_response_time': response_time
             }
 
-            # process_answer 재사용
-            return self.process_answer(
-                state=initial_state,
-                user_answer=first_answer,
-                response_time=response_time,
-                thread_id=thread_id
-            )
+            return initial_state
 
         except Exception as e:
             logger.error(f"Error initializing interview: {e}")
@@ -721,54 +589,6 @@ JSON 형식으로 응답하세요."""
             logger.error(f"Error getting state for thread_id {thread_id}: {e}")
             logger.error(f"Full traceback:\n{traceback.format_exc()}")
             raise
-
-    def process_answer(
-        self,
-        state: InterviewState,
-        user_answer: str,
-        response_time: int,
-        thread_id: str
-    ) -> str:
-        """
-        답변 처리 및 다음 질문 생성 (LangGraph invoke 방식)
-
-        Args:
-            state: 현재 면접 상태 (record_id 포함)
-            user_answer: 사용자 답변
-            response_time: 답변 소요 시간
-            thread_id: LangGraph thread ID (Checkpointer용)
-
-        Returns:
-            str: 다음 질문 텍스트
-        """
-        try:
-            # 현재 답변 정보를 state에 설정
-            state['last_answer'] = user_answer
-            state['last_response_time'] = response_time
-
-            # PostgresSaver 컨텍스트 내에서 그래프 실행
-            with PostgresSaver.from_conn_string(self._conn_string) as checkpointer:
-                graph = self._build_workflow().compile(checkpointer=checkpointer)
-                config = {"configurable": {"thread_id": thread_id}}
-                result_state = graph.invoke(state, config=config)
-
-                # last_question에서 다음 질문 추출
-                next_question = result_state.get('last_question', '')
-
-                return next_question
-
-        except Exception as e:
-            import traceback
-            error_msg = str(e)
-            logger.error(f"Error processing answer: {error_msg}")
-            logger.error(f"Full traceback:\n{traceback.format_exc()}")
-
-            # 429 할당량 초과 에러
-            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                raise Exception("API_QUOTA_EXCEEDED: Google Gemini API 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요.")
-
-            # 그 외 에러
-            raise Exception(f"면접 진행 중 오류가 발생했습니다: {error_msg}")
 
     def analyze_interview_result(self, thread_id: str) -> Dict[str, Any]:
         """

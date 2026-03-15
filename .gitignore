@@ -44,3 +44,4 @@ Thumbs.db
 *.PDF
 **/*.pdf
 **/*.PDF
+split_files_output/processing_log.md

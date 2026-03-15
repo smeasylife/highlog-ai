@@ -1,0 +1,2626 @@
+[
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "학업",
+    "question": "양자인터넷 관련하여 조사하였는데 그 관련 내용이 무엇인가요?",
+    "search_context": "[컴퓨터공학|학업|양자인터넷|조사 내용 설명]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "학업",
+    "question": "그러한 정보들을 어디에서 찾았나요?",
+    "search_context": "[컴퓨터공학|학업|정보 출처|탐구 과정]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "독서",
+    "question": "어떠한 책을 읽었는지 기억이 나나요?",
+    "search_context": "[컴퓨터공학|독서|양자인터넷|탐구 과정]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "세특",
+    "question": "노인, 어린아이들을 위해 글자를 인식하고 읽어주는 프로그램을 제작하였는데 과정을 알 수 있을 까요?",
+    "search_context": "[컴퓨터공학|세특|프로그램 제작|개발 과정 설명]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "세특",
+    "question": "OCR을 개발할 때 데이터는 어디에서 얻었습니까?",
+    "search_context": "[컴퓨터공학|세특|OCR|데이터 출처]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "세특",
+    "question": "제작하면서 힘들었던 점은 없었나요?",
+    "search_context": "[컴퓨터공학|세특|프로그램 제작|어려움 극복]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "리더십",
+    "question": "프로그램을 제작할 때 어떠한 역할을 맡으셨나요?",
+    "search_context": "[컴퓨터공학|리더십|프로그램 제작|팀 역할]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "리더십",
+    "question": "1학년 때 체육한마당에서 의견조율이 필요한 순간 중재하는 역할을 하였다는데 이에 대해 자세 히 얘기해 주실 수 있나요?",
+    "search_context": "[컴퓨터공학|리더십|의견 조율|중재 경험]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "리더십",
+    "question": "의견조율 과정에서 해결이 잘 안되는 상황이 발생할 수도 있는데 그럴 때는 어떻게 대처하였나 요?",
+    "search_context": "[컴퓨터공학|리더십|의견 조율|대처 방안]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "컴퓨터공학과",
+    "category": "리더십",
+    "question": "3학년 때 부반장을 맡으셨는데 어떠한 역할을 하셨나요?",
+    "search_context": "[컴퓨터공학|리더십|부반장|역할 설명]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "인성",
+    "question": "(아이스 브레이킹) 학교 캠퍼스 와 보니까 어때요?",
+    "search_context": "[행정학|인성|캠퍼스|소감]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "동아리",
+    "question": "동아리 활동에 보면 방송부와 르와라는 법 동아리를 3년 내내 2개나 했네요. 1개만 해도 힘들었 을 텐데... 왜 2개나 했는지 설명해줄 수 있어요?",
+    "search_context": "[행정학|동아리|방송부 르와|활동 동기]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "동아리",
+    "question": "본인이 가입한 동아리가 본인에게 각각 어떤 의미였는지 설명해 줄 수 있나요?",
+    "search_context": "[행정학|동아리|방송부 르와|활동 의미]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "진로",
+    "question": "현재 대한민국 교육 제도의 가장 큰 문제점은 무엇이라 생각하고, 재수생과 재학생을 나눠서 수 능을 친다고 하셨는데, 거기에 대해 좀 더 설명해 주세요.",
+    "search_context": "[행정학|진로|교육 제도|문제점 및 개선 방안]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "진로",
+    "question": "재수생과 재학생을 나눠서 시험을 친다는 건, 재수생에게 불이익을 주겠다는 말인가요?",
+    "search_context": "[행정학|진로|교육 제도|정책의 영향]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "진로",
+    "question": "재수생에게는 불이익 주는 게 맞네요. 재수생이랑 삼수생은 엄연히 차이가 있으니, 그들에게는 불이익 주는게 맞네요.",
+    "search_context": "[행정학|진로|교육 제도|압박 질문]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "진로",
+    "question": "그럼 재수생한테 불리한 게 맞네",
+    "search_context": "[행정학|진로|교육 제도|압박 질문]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "세특",
+    "question": "노인과 장애인을 위한 방안을 모색할 때, 다른 나라의 정책을 참고했다고 쓰여져 있네요. 혹시 어떤 정책이 가장 기억에 남는지 말해주실 수 있나요?",
+    "search_context": "[행정학|세특|노인 장애인 정책|참고 정책]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "진로",
+    "question": "생기부를 보면 꿈이 3년 동안 쭉 경찰이었네요. 근데 왜 행정학과를 지원했는지 지원 동기를 말씀 해주실 수 있나요?",
+    "search_context": "[행정학|진로|지원 동기|진로 변경]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(KU자기추천전형)",
+    "department": "행정학과",
+    "category": "세특",
+    "question": "3학년 때 본인이 실용 경제 시간에 장애인 고용과 관련한 활동을 했었는데, 그럼 지원자는 장애 인 고용률을 높이기 위해서는 어떤 것이 필요하다고 생각하나요?",
+    "search_context": "[행정학|세특|장애인 고용|개선 방안]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "인성",
+    "question": "자기소개 해보세요.",
+    "search_context": "[글로벌협력과|인성|자기소개|지원자 파악]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "인성",
+    "question": "학교생활을 하면서 있었던 갈등과 그 해결 경험에 대해 말해보세요.",
+    "search_context": "[글로벌협력과|인성|갈등 해결|문제 해결 능력]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "진로",
+    "question": "학교에 합격하여 복수전공을 한다면 어떤 전공을 하고 싶은지 + 이유",
+    "search_context": "[글로벌협력과|진로|복수전공|학업 계획 및 목표]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "진로",
+    "question": "지원동기 말씀해주세요",
+    "search_context": "[글로벌협력과|진로|지원동기|지원동기 확인]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "진로",
+    "question": "지원동기에서 지구온난화를 언급하셨는데... 미세플라스틱과 관련해서 국제협력은 어떻게 진행되어야 할까요?",
+    "search_context": "[글로벌협력과|진로|미세플라스틱|국제협력 방안]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "진로",
+    "question": "국민들의 참여는 어떻게 높일 수 있을까요?",
+    "search_context": "[글로벌협력과|진로|미세플라스틱|국민 참여 증진 방안]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "학업",
+    "question": "혹시 한국의 국제개발협력 사례를 아는 것이 있나요?",
+    "search_context": "[글로벌협력과|학업|국제개발협력|한국 사례]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "학업",
+    "question": "해외원조의 한계에 대해 글을 쓴 적이 있네요... 해외원조의 한계가 무엇인가요?",
+    "search_context": "[글로벌협력과|학업|해외원조|한계점 분석]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "학업",
+    "question": "해외원조의 불투명성 문제를 어떻게 해결할 수 있을까요?",
+    "search_context": "[글로벌협력과|학업|해외원조|불투명성 해결 방안]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "학업",
+    "question": "팬데믹과 관련해서 국제 협력의 필요성에 대해 탐구 활동을 한 적이 있는데, 어떠한 내용인가요?",
+    "search_context": "[글로벌협력과|학업|팬데믹|국제협력 필요성 탐구]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "학업",
+    "question": "사회 기반 시설이라 하면 물질적인 거? 비물질적인 거? 어떤 것을 말하는 건가요?",
+    "search_context": "[글로벌협력과|학업|사회기반시설|개념 정의]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "독서",
+    "question": "제러미 리프킨의 책 노동의 종말과 AI로 인한 초양극사회... 무슨 내용인가요?",
+    "search_context": "[글로벌협력과|독서|노동의 종말|AI 영향]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "진로",
+    "question": "기후 문제로 인한 개발도상국의 피해는 무엇인가요?",
+    "search_context": "[글로벌협력과|진로|기후문제|개발도상국 피해]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "진로",
+    "question": "생기부를 보니까 정치외교학과에 지원해도 무방해 보이는데, 정치외교학과와 글로벌협력과의 차이가 무엇이라고 생각하나요?",
+    "search_context": "[글로벌협력과|진로|정치외교학과|학과 차이점]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "인성",
+    "question": "(생기부에 선생님들이 칭찬을 많이 적어주셨다고 말씀하시면서) 숨은 일꾼의 모습을 보였다고 적혀있는데, 이게 어떤 건가요?",
+    "search_context": "[글로벌협력과|인성|숨은 일꾼|구체적 사례]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "동아리",
+    "question": "오케스트라에서 바이올린 연주를 했네요. 이 활동을 하면서 무엇을 배우게 되었나요?",
+    "search_context": "[글로벌협력과|동아리|오케스트라|배운 점]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "글로벌협력과",
+    "category": "인성",
+    "question": "시간이 얼마 안 남았는데 마지막으로 하고 싶은 말 간단하게 해주세요.",
+    "search_context": "[글로벌협력과|인성|마지막 할 말|지원 의지]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "기계시스템공학부",
+    "category": "진로",
+    "question": "우리학교 지원동기 말해주세요.",
+    "search_context": "[기계시스템공학부|진로|지원동기|지원동기 확인]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합(숙명인재 면접형 전형)",
+    "department": "기계시스템공학부",
+    "category": "진로",
+    "question": "3학년 때 진로탄탄 활동에서 간이 로켓 발사 실험을 진행하셨다고 했는데 어떻게 활동하였는지, 어떤 역할을 맡았는지 그리고 활동하면서 어려웠던 점이나 문제가 생긴 점은 없었는지 말씀해 주세요.",
+    "search_context": "[기계시스템공학부|진로|간이 로켓 발사 실험|활동 내용 및 어려움]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합-숙명인재 면접형 전형",
+    "department": "약학과",
+    "category": "진로",
+    "question": "지원동기를 말씀해주세요.",
+    "search_context": "[약학과|진로|지원동기|학과 지원 동기]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합-숙명인재 면접형 전형",
+    "department": "약학과",
+    "category": "독서",
+    "question": "논리학 시간에 '약사가 말하는 약사'를 읽었는데, 어떤 분야에 관심이 있나요?",
+    "search_context": "[약학과|독서|약사가 말하는 약사|신약개발연구원]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합-숙명인재 면접형 전형",
+    "department": "약학과",
+    "category": "학업",
+    "question": "항생제 내성균과 항암제 내성균 비교를 강조했는데, 공통점과 차이점을 설명해보세요.",
+    "search_context": "[약학과|학업|항생제 내성균|항암제 내성균 비교]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합-숙명인재 면접형 전형",
+    "department": "약학과",
+    "category": "학업",
+    "question": "항생제 내성이 어떻게 다른사람에게 전파되는지도 찾아봤나요?",
+    "search_context": "[약학과|학업|항생제 내성|전파 경로]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합-숙명인재 면접형 전형",
+    "department": "약학과",
+    "category": "학업",
+    "question": "코로나 진단키트에 쓰인 조건부확률에 대해 조사했는데, 조건부확률에 대해 설명해주세요.",
+    "search_context": "[약학과|학업|조건부확률|코로나 진단키트]"
+  },
+  {
+    "university": "숙명여자대학교",
+    "admission_type": "학생부종합-숙명인재 면접형 전형",
+    "department": "약학과",
+    "category": "학업",
+    "question": "생명과학II 수업에서 지연가닥에 라이게이즈가 활용될 수 있지 않을까? 라는 의문을 가졌다고 한 는데 의문을 갖게 된 계기와 결과를 설명하세요.",
+    "search_context": "[약학과|학업|생명과학II|지연가닥 라이게이즈]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "건축학부 실내건축전공",
+    "category": "진로",
+    "question": "우리학교 실내건축학과에 지원하게 된 동기 말해 보세요.",
+    "search_context": "[실내건축전공|진로|지원동기|학과 지원 동기]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "건축학부 실내건축전공",
+    "category": "진로",
+    "question": "본인이 이 학과에 지원하기 위해 특별히 노력한 점이 있을까요?",
+    "search_context": "[실내건축전공|진로|노력|학과 관련 활동]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "건축학부 실내건축전공",
+    "category": "진로",
+    "question": "그 기록들 중에 특별히 인상적이었던 장소가 있을까요?",
+    "search_context": "[실내건축전공|진로|기록|인상적인 공간]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "건축학부 실내건축전공",
+    "category": "진로",
+    "question": "그런 미술관을 한 군데를 답사 갔단 말인가요? 기억에 남는 미술관 특징이 무엇이라고 생각하나요?",
+    "search_context": "[실내건축전공|진로|미술관 답사|건축 특징]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "건축학부 실내건축전공",
+    "category": "진로",
+    "question": "생기부에 본인의 건축관에 대해 고민해보는 계기가 되었다고 적혀있는데, 본인의 건축관에 대해 설명해보세요.",
+    "search_context": "[실내건축전공|진로|건축관|개성 표현 공간]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "건축학부 실내건축전공",
+    "category": "학업",
+    "question": "생기부에 '건축과 사람들의 심리에 대한 연관성'을 조사했다고 되어있는데, 구체적인 사례를 들어 서 설명해보세요.",
+    "search_context": "[실내건축전공|학업|건축 심리 연관성|교실 사례]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "글로벌통상학과",
+    "category": "진로",
+    "question": "숭실대학교 많은 학과 중에서 글로벌통상학과에 지원했는데 글로벌통상학과가 뭐하는 학과인가요?",
+    "search_context": "[글로벌통상학과|진로|학과 이해|학과 역할]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "글로벌통상학과",
+    "category": "학업",
+    "question": "그럼 와서 공부하고싶은 과목 있어요?",
+    "search_context": "[글로벌통상학과|학업|희망 과목|학습 계획]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "글로벌통상학과",
+    "category": "진로",
+    "question": "졸업하고는 뭐하고싶어요?",
+    "search_context": "[글로벌통상학과|진로|졸업 후 계획|글로벌 인재]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "글로벌통상학과",
+    "category": "진로",
+    "question": "어떤 국제기구에서 뭐하고싶은데요?",
+    "search_context": "[글로벌통상학과|진로|국제기구|환경보호 수출]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합-SSU미래인재 전형",
+    "department": "글로벌통상학과",
+    "category": "학업",
+    "question": "현재 무역 관련해서 아는 이슈 있나요?",
+    "search_context": "[글로벌통상학과|학업|무역 이슈|트럼프 보호무역]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합",
+    "department": "산업공학과",
+    "category": "리더십",
+    "question": "학급을 이끌면서 이룬 사례가 있을까요?",
+    "search_context": "[산업공학과|리더십|학급 운영|리더십 경험 확인]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합",
+    "department": "산업공학과",
+    "category": "인성",
+    "question": "승부욕이 강하다고 적혀있는데 강한가요?",
+    "search_context": "[산업공학과|인성|승부욕|성격 특성 확인 및 극복 노력]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합",
+    "department": "산업공학과",
+    "category": "학업",
+    "question": "다익스트라알고리즘에 대해 탐구했고 항공기 경로등에 사용될만큼 꼭 필요한건데 또 탐구에 편 리함 느낀 사례가 있다고 하는데 설명해주세요.",
+    "search_context": "[산업공학과|학업|다익스트라 알고리즘|탐구 경험 및 적용 사례]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합",
+    "department": "산업공학과",
+    "category": "진로",
+    "question": "관련 이슈나 관심있는분야?",
+    "search_context": "[산업공학과|진로|챗GPT|관심 분야 및 진로 연관성]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합",
+    "department": "산업공학과",
+    "category": "인성",
+    "question": "마지막 할말있으시면 해주세요",
+    "search_context": "[산업공학과|인성|지원 동기|지원자의 열정 및 포부 확인]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(SSU미래인재 전형)",
+    "department": "평생교육학과",
+    "category": "동아리",
+    "question": "내셔널트러스트와 그로프트라는 동아리에 참여했네요. 어떤 동아리인지 소개해줄 수 있나요?",
+    "search_context": "[평생교육학과|동아리|내셔널트러스트, 그로프트|동아리 활동 내용 확인]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(SSU미래인재 전형)",
+    "department": "평생교육학과",
+    "category": "동아리",
+    "question": "내셔널트러스트에서 일본의 오염수 방류에 관한 토론 활동을 했는데, 이때 본인이 주장한 내용과 견해를 설명해줄수 있나요?",
+    "search_context": "[평생교육학과|동아리|오염수 방류 토론|사회 이슈에 대한 견해 및 논리력]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(SSU미래인재 전형)",
+    "department": "평생교육학과",
+    "category": "세특",
+    "question": "교권 침해에 관해서도 활동을 했네요? 학교 교권 보호 위원회와 고충심사위원회 같은 실제 기구 들에 기능적인 한계가 있다고 하셨는데 설명 부탁드립니다.",
+    "search_context": "[평생교육학과|세특|교권 침해|사회 문제 인식 및 해결 방안 제시]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(SSU미래인재 전형)",
+    "department": "평생교육학과",
+    "category": "세특",
+    "question": "일본의 가미카제 특공대와 한국의 입시 위주 공교육이 비슷하다고 언급하신 활동이 있는데, 어느 점을 비교했나요?",
+    "search_context": "[평생교육학과|세특|가미카제, 입시 위주 공교육|비판적 사고 및 비교 분석 능력]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(SSU미래인재 전형)",
+    "department": "평생교육학과",
+    "category": "진로",
+    "question": "평생교육학과를 진학한 후 향후 진로가 있나요?",
+    "search_context": "[평생교육학과|진로|평생교육 프로그램 개발자|진로 계획 및 목표]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(SSU미래인재 전형)",
+    "department": "평생교육학과",
+    "category": "진로",
+    "question": "사회 격차 같은 문제에 관심이 많아 보이네요, 그렇다면 평생교육이 이런 격차를 어떻게 해결할 수 있을까요?",
+    "search_context": "[평생교육학과|진로|사회 격차, 평생교육|학과 지식 활용 및 문제 해결 능력]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(SSU미래인재 전형)",
+    "department": "평생교육학과",
+    "category": "인성",
+    "question": "마지막으로 하고 싶은 말이 있다면 해주세요.",
+    "search_context": "[평생교육학과|인성|지원 동기|지원자의 열정 및 포부 확인]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(기회균형전형)",
+    "department": "불어불문학과",
+    "category": "진로",
+    "question": "왜 우리 학과에 지원하게 되었나요?",
+    "search_context": "[불어불문학과|진로|지원 동기|학과 지원 동기 확인]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(기회균형전형)",
+    "department": "불어불문학과",
+    "category": "진로",
+    "question": "왜 하필 숭실대학교에 와야 하나요?",
+    "search_context": "[불어불문학과|진로|숭실대학교|대학 및 학과 선택 이유]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(기회균형전형)",
+    "department": "불어불문학과",
+    "category": "독서",
+    "question": "프랑스 문학을 읽어본 경험이 있나요?",
+    "search_context": "[불어불문학과|독서|프랑스 문학|관련 분야 독서 경험 확인]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(기회균형전형)",
+    "department": "불어불문학과",
+    "category": "학업",
+    "question": "이방인은 20세기 철학의 대표작인데, 철학 사조 중 알고 있는 것이 있나요?",
+    "search_context": "[불어불문학과|학업|이방인, 철학 사조|독서 내용 심화 및 관련 지식 확인]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(기회균형전형)",
+    "department": "불어불문학과",
+    "category": "독서",
+    "question": "이방인에서 기억에 남는 장면은 무엇인가요?",
+    "search_context": "[불어불문학과|독서|이방인|독서 내용 이해도 확인]"
+  },
+  {
+    "university": "숭실대학교",
+    "admission_type": "학생부종합(기회균형전형)",
+    "department": "불어불문학과",
+    "category": "진로",
+    "question": "디자인에 관심이 있었나요? 현재도 그런가요?",
+    "search_context": "[불어불문학과|진로|디자인, 통번역사|진로 변화 및 일관성 확인]"
+  },
+  {
+    "university": "신한대학교",
+    "admission_type": "학생부교과(일반전형)",
+    "department": "임상병리학과",
+    "category": "진로",
+    "question": "우리 학과에 지원한 동기와 포부를 말해보세요",
+    "search_context": "[임상병리학과|진로|지원동기|학과 지원 동기 및 포부]"
+  },
+  {
+    "university": "신한대학교",
+    "admission_type": "학생부교과(일반전형)",
+    "department": "임상병리학과",
+    "category": "진로",
+    "question": "인공지능(AI) 기술의 진보가 일상생활에 어떤 영향을 줄 수 있는지 본인의 생각을 말해보세요",
+    "search_context": "[임상병리학과|진로|인공지능|AI 기술의 영향]"
+  },
+  {
+    "university": "신한대학교",
+    "admission_type": "학생부교과(일반전형)",
+    "department": "임상병리학과",
+    "category": "진로",
+    "question": "기후변화가 인간의 생활 및 생태계에 어떤 영향을 줄 수 있는지 본인의 생각을 말해보세요",
+    "search_context": "[임상병리학과|진로|기후변화|기후변화의 영향]"
+  },
+  {
+    "university": "신한대학교",
+    "admission_type": "학생부교과(일반전형)",
+    "department": "임상병리학과",
+    "category": "진로",
+    "question": "빅데이터를 활용한 과학기술 분야의 발전 방향에 대하여 본인의 생각을 말해보세요",
+    "search_context": "[임상병리학과|진로|빅데이터|빅데이터 활용 발전 방향]"
+  },
+  {
+    "university": "신한대학교",
+    "admission_type": "학생부교과(일반전형)",
+    "department": "임상병리학과",
+    "category": "진로",
+    "question": "최근 가속화되고 있는 지구 온난화 예방 방안에 대해 본인의 생각을 말해보세요.",
+    "search_context": "[임상병리학과|진로|지구온난화|지구 온난화 예방 방안]"
+  },
+  {
+    "university": "신한대학교",
+    "admission_type": "학생부교과(일반전형)",
+    "department": "임상병리학과",
+    "category": "인성",
+    "question": "마지막으로 하고 싶은 말이 있다면 말해보세요",
+    "search_context": "[임상병리학과|인성|마지막 할 말|면접 마무리]"
+  },
+  {
+    "university": "신한대학교",
+    "admission_type": "학생부교과(농어촌전형)",
+    "department": "방사선학과",
+    "category": "진로",
+    "question": "우리 학과에 지원한 동기와 포부를 말해주세요",
+    "search_context": "[방사선학과|진로|지원동기|학과 지원 동기 및 포부]"
+  },
+  {
+    "university": "신한대학교",
+    "admission_type": "학생부교과(농어촌전형)",
+    "department": "방사선학과",
+    "category": "진로",
+    "question": "최근 가속화되고 있는 지구 온난화 예방 방안에 대해 본인의 생각을 말해보시오",
+    "search_context": "[방사선학과|진로|지구온난화|지구 온난화 예방 방안]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "기계공학과",
+    "category": "독서",
+    "question": "책을 많이 읽으셨는데 그중기억나는 책이 있나요?",
+    "search_context": "[기계공학과|독서|코스모스|인상 깊었던 책]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "기계공학과",
+    "category": "학업",
+    "question": "그러면 혹시 자신도 무엇을 조사하거나 연구한적이 있을까요?",
+    "search_context": "[기계공학과|학업|PID제어|조사/연구 경험]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "기계공학과",
+    "category": "학업",
+    "question": "자동차가 유선형인 이유를 조사하셨는데 설명해주시겠어요?",
+    "search_context": "[기계공학과|학업|유선형 디자인|자동차 유선형 이유]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "기계공학과",
+    "category": "진로",
+    "question": "그러면 앞으로 유선형디자인이 어떤방향으로 디자인 돼야 효율적으로 자동차를 운전하게 될지 생각해보신적 있으세요?",
+    "search_context": "[기계공학과|진로|유선형 디자인|미래 자동차 디자인 방향]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "기계공학과",
+    "category": "학업",
+    "question": "자율주행자동차에 인지센서에 대해 조사하셨네요? 설명해주시겠어요?",
+    "search_context": "[기계공학과|학업|자율주행자동차|인지센서]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "기계공학과",
+    "category": "진로",
+    "question": "그럼앞으로 왼전한 자율주행차를 만들려면 기술적 측면에서 어떤기술이 발전되야하나요?",
+    "search_context": "[기계공학과|진로|자율주행차|미래 기술 발전 방향]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "프런티어과학학부",
+    "category": "진로",
+    "question": "외신기자로써 본인이 생각하는 주요 역량은?",
+    "search_context": "[프런티어과학학부|진로|외신기자|직업 역량]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "프런티어과학학부",
+    "category": "독서",
+    "question": "생기부 속에 영문학작품을 많이 다뤘던데, 본인이 발견한 그들의 공통점이 있나요?",
+    "search_context": "[프런티어과학학부|독서|영문학|탐구 능력]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "프런티어과학학부",
+    "category": "세특",
+    "question": "생기부 질문 ­ 영어시간에 정책제안서를 작성하셨는데 뭔지 설명해주세요.",
+    "search_context": "[프런티어과학학부|세특|영어|정책제안서 활동]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "프런티어과학학부",
+    "category": "인성",
+    "question": "자기소개 및 지원동기에 대해서 말해주세요.",
+    "search_context": "[프런티어과학학부|인성|자기소개|지원동기]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "프런티어과학학부",
+    "category": "학업",
+    "question": "자기소개 때, 1학년 융합 탐구 활동을 했다고 하셨는데 가장 기억에 남는 실험이 있나요?",
+    "search_context": "[프런티어과학학부|학업|융합탐구|기억에 남는 실험]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "프런티어과학학부",
+    "category": "학업",
+    "question": "물리학1에서 단백질 엔트로피 관련 활동을 했는데 이것에 관해서 설명해주세요.",
+    "search_context": "[프런티어과학학부|학업|단백질 엔트로피|활동 설명]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "프런티어과학학부",
+    "category": "봉사",
+    "question": "고등학교 시절 기억에 남은 교내 봉사활동이 있나요?",
+    "search_context": "[프런티어과학학부|봉사|교내 봉사활동|기억에 남는 활동]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "프런티어과학학부",
+    "category": "인성",
+    "question": "아주대학교에 왔을 때 첫 인상이 어떠셨나요?",
+    "search_context": "[프런티어과학학부|인성|아주대학교|첫인상]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "프런티어과학학부",
+    "category": "인성",
+    "question": "시간이 다 돼서 마지막으로 하고 싶은 말 있으면 하세요.",
+    "search_context": "[프런티어과학학부|인성|마지막 할 말|입학 포부]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "학업",
+    "question": "대학교에 입학해서 가장 배우고 싶은 과목은 무엇인가요?",
+    "search_context": "[화학공학과|학업|배우고 싶은 과목|학업 계획]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "학업",
+    "question": "열역학을 활용하여 어떻게 신재생에너지를 설계하는데 도움이 되는 거죠?",
+    "search_context": "[화학공학과|학업|열역학|신재생에너지 설계]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "학업",
+    "question": "그럼 열역학 얘기가 나와서 말인데 밀폐된 방이 있어요. 밀폐된 방안에 냉장고를 열어놓으면 온도가 어떻게 될까요?",
+    "search_context": "[화학공학과|학업|열역학|냉장고 온도 변화]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "학업",
+    "question": "불확정성 원리에 관하여 뛰어난 발표를 했다고 적혀있는데 어떤 내용을 발표하였나요?",
+    "search_context": "[화학공학과|학업|불확정성 원리|발표 내용]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "학업",
+    "question": "불확정성 원리에 대하여 입자는 운동량과 위치가 동시에 측정이 불가능 하다고 했는데 축구공을 보았을 때 위치왕 운동량이 동시에 변하는 이유는 무엇인가요?",
+    "search_context": "[화학공학과|학업|불확정성 원리|축구공 운동량 위치]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "학업",
+    "question": "고체의 결정 구조를 활용하여 발표를 진행하였다고 했는데 어떤 식으로 발표하였나요?",
+    "search_context": "[화학공학과|학업|고체 결정 구조|발표 방식]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "학업",
+    "question": "형상기억합금을 예시로 들었는데 면심입방 구조에서 체심입방 구조로 변하게 되는 이유가 무엇인가요?",
+    "search_context": "[화학공학과|학업|형상기억합금|결정 구조 변화 원리]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "학업",
+    "question": "아니, 그게 아니라 어떤 원리에 의해서 체심입방구조에서 면심 입방 구조로 변하게 되나요?",
+    "search_context": "[화학공학과|학업|결정 구조|변화 원리]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "학업",
+    "question": "반응물이 생성물이 되면서 무엇을 얻게되잖아요. 그게 뭘까요?",
+    "search_context": "[화학공학과|학업|화학 반응|활성화 에너지]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "리더십",
+    "question": "행동 특성에 보면 1학년 때 제 2의 반장이라고 표현 되어 있는데 왜 그렇게 불렸나요?",
+    "search_context": "[화학공학과|리더십|제2의 반장|리더십 발휘 경험]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(ACE전형)",
+    "department": "화학공학과",
+    "category": "인성",
+    "question": "시간이 돔 남았는데 마지막으로 하고 싶은 말이 있나요?",
+    "search_context": "[화학공학과|인성|마지막 할 말|입학 포부]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(첨단융합인재전형)",
+    "department": "첨단바이오융합대학",
+    "category": "진로",
+    "question": "지원 동기부터 말해볼까요?",
+    "search_context": "[첨단바이오융합대학|진로|지원 동기|학과 관심]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(첨단융합인재전형)",
+    "department": "첨단바이오융합대학",
+    "category": "학업",
+    "question": "진로선택 과목을 감안하더라도 3학년 때 성적이 조금씩 떨어지는 게 보이는데, 왜 그렇다고 생각하나요?",
+    "search_context": "[첨단바이오융합대학|학업|성적 하락|원인 분석]"
+  },
+  {
+    "university": "아주대학교",
+    "admission_type": "학생부종합(첨단융합인재전형)",
+    "department": "첨단바이오융합대학",
+    "category": "학업",
+    "question": "그렇지만 3학년의 본분은 학업이잖아요?",
+    "search_context": "[첨단바이오융합대학|학업|학업의 중요성|가치관]"
+  },
+  {
+    "university": "연세대학교",
+    "admission_type": "학생부종합(활동우수형)",
+    "department": "경제학과",
+    "category": "학업",
+    "question": "가의 진화론. 사회진화론 비교, 가로 나 설명하기.",
+    "search_context": "[경제학과|학업|진화론|사회진화론 비교]"
+  },
+  {
+    "university": "연세대학교",
+    "admission_type": "학생부종합(활동우수형)",
+    "department": "경제학과",
+    "category": "학업",
+    "question": "가, 나 종합하여 다 설명하기.",
+    "search_context": "[경제학과|학업|진화론|사회진화론 적용]"
+  },
+  {
+    "university": "연세대학교",
+    "admission_type": "학생부종합(활동우수형)",
+    "department": "국어국문학과",
+    "category": "학업",
+    "question": "1번: 제시문 (가)의 관점에서 제시문 (나)와 (다)의 관점을 비교하시오. (60점)",
+    "search_context": "[국어국문학과|학업|진화론|관점 비교]"
+  },
+  {
+    "university": "연세대학교",
+    "admission_type": "학생부종합(활동우수형)",
+    "department": "국어국문학과",
+    "category": "학업",
+    "question": "2번: 제시문 (다)를 바탕으로 제시문 (라)의 결과를 분석하시오. (40점)",
+    "search_context": "[국어국문학과|학업|인종차별|결과 분석]"
+  },
+  {
+    "university": "연세대학교",
+    "admission_type": "학생부종합(국제형)",
+    "department": "HASS(융합인문사회계열)",
+    "category": "학업",
+    "question": "제시문 (가)와 (나)의 관점을 비교하시오",
+    "search_context": "[융합인문사회계열|학업|인공지능|관점 비교]"
+  },
+  {
+    "university": "연세대학교",
+    "admission_type": "학생부종합(국제형)",
+    "department": "HASS(융합인문사회계열)",
+    "category": "학업",
+    "question": "제시문 (다)를 제시문 (가)와 (나)의 입장에서 평가하시오",
+    "search_context": "[융합인문사회계열|학업|인공지능|영화 Her 평가]"
+  },
+  {
+    "university": "연세대학교",
+    "admission_type": "학생부종합(국제형)",
+    "department": "ISE(융합과학공학부)",
+    "category": "학업",
+    "question": "인공지능 기술의 활용에 대한 제시문 (가) (나)의 관점을 비교분석하시오.",
+    "search_context": "[융합과학공학부|학업|인공지능|관점 비교 분석]"
+  },
+  {
+    "university": "연세대학교",
+    "admission_type": "학생부종합(국제형)",
+    "department": "ISE(융합과학공학부)",
+    "category": "학업",
+    "question": "제시문 (다)를 제시문 (가) (나)의 관점에서 설명?분석?평가?(셋 중 뭐였는지 기억안남) 하시오.",
+    "search_context": "[융합과학공학부|학업|인공지능|영화 Her 설명/분석/평가]"
+  },
+  {
+    "university": "Unknown University",
+    "admission_type": "학생부종합(기회균형)",
+    "department": "생화학과",
+    "category": "학업",
+    "question": "제시문 (가)의 입장에서 (나)를 평가하는 내용은?",
+    "search_context": "[생화학과|학업|제시문 분석|제시문 평가]"
+  },
+  {
+    "university": "Unknown University",
+    "admission_type": "학생부종합(기회균형)",
+    "department": "생화학과",
+    "category": "학업",
+    "question": "제시문 (다)에서 (나) 지문을 설명하자면?",
+    "search_context": "[생화학과|학업|제시문 분석|제시문 설명]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "간호학과",
+    "category": "진로",
+    "question": "영산대학교 간호학과를 지원하게 된 동기는 무엇이며, 영산대학교 간호학과에 입학하기 위해 어떤 노력을 하였습니까?",
+    "search_context": "[간호학과|진로|지원동기|입학 노력]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "간호학과",
+    "category": "인성",
+    "question": "자신의 인생에서 가장 큰 영향을 미친 경험이 있으면 무엇인지 말씀해 보시겠습니까?",
+    "search_context": "[간호학과|인성|영향 미친 경험|가치관]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "간호학과",
+    "category": "진로",
+    "question": "캐어 로봇에 대해 어떻게 생각하나요?",
+    "search_context": "[간호학과|진로|캐어 로봇|의료 기술]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "물리치료학과",
+    "category": "진로",
+    "question": "물리치료학과를 지원하게 된 동기는 무엇입니까?",
+    "search_context": "[물리치료학과|진로|지원동기|직업 이해]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "물리치료학과",
+    "category": "독서",
+    "question": "감명 깊게 읽은 책이나 영화를 말해주세요.",
+    "search_context": "[물리치료학과|독서|감명 깊은 책/영화|가치관]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "물리치료학과",
+    "category": "인성",
+    "question": "영산대학교 물리치료학과가 본인을 뽑아야 하는 이유를 말해주세요.",
+    "search_context": "[물리치료학과|인성|자기PR|강점 어필]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "물리치료학과",
+    "category": "학업",
+    "question": "자신만의 학습 노하우를 말해주세요.",
+    "search_context": "[물리치료학과|학업|학습 노하우|자기주도학습]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "치위생학과",
+    "category": "진로",
+    "question": "지원동기가 무엇인가요?",
+    "search_context": "[치위생학과|진로|지원동기|학과 이해]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "치위생학과",
+    "category": "인성",
+    "question": "본인의 장점과 단점이 무엇이라고 생각하나요?",
+    "search_context": "[치위생학과|인성|장단점|자기 이해]"
+  },
+  {
+    "university": "영산대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "치위생학과",
+    "category": "진로",
+    "question": "치위생과가 다른 과에 비해 장점이 무엇이라고 생각하나요?",
+    "search_context": "[치위생학과|진로|학과 장점|직업 이해]"
+  },
+  {
+    "university": "Unknown University",
+    "admission_type": "학생부종합(면접형전형)",
+    "department": "외식조리학부 제과제빵 ・ 조리전공",
+    "category": "진로",
+    "question": "학교에서 AI 프로젝트에 대해서 하였는데 요즘 AI가 발전하면서 제과제빵과도 연관이 안 될 리가 없을 텐데 그 부분에 대해서 어떻게 생각하시나요?",
+    "search_context": "[외식조리학부 제과제빵 ・ 조리전공|진로|AI|미래 전망]"
+  },
+  {
+    "university": "Unknown University",
+    "admission_type": "학생부종합(면접형전형)",
+    "department": "외식조리학부 제과제빵 ・ 조리전공",
+    "category": "리더십",
+    "question": "학급 반장을 하신 적이 있는데 리더로서 어떤 것이 필요할까요?",
+    "search_context": "[외식조리학부 제과제빵 ・ 조리전공|리더십|반장|소통 능력]"
+  },
+  {
+    "university": "Unknown University",
+    "admission_type": "학생부종합(면접형전형)",
+    "department": "외식조리학부 제과제빵 ・ 조리전공",
+    "category": "진로",
+    "question": "만들어 본 디저트가 있으신가요?",
+    "search_context": "[외식조리학부 제과제빵 ・ 조리전공|진로|디저트|제과제빵 경험]"
+  },
+  {
+    "university": "Unknown University",
+    "admission_type": "학생부종합(면접형전형)",
+    "department": "외식조리학부 제과제빵 ・ 조리전공",
+    "category": "학업",
+    "question": "별립법은 어떤 특징이 있나요?",
+    "search_context": "[외식조리학부 제과제빵 ・ 조리전공|학업|별립법|제과제빵 기술]"
+  },
+  {
+    "university": "우송대학교",
+    "admission_type": "학생부교과(교과면접전형)",
+    "department": "철도차량시스템학과",
+    "category": "진로",
+    "question": "철도차량시스템학과에 지원한 이유는 무엇인가요?",
+    "search_context": "[철도차량시스템학과|진로|지원동기|기관사]"
+  },
+  {
+    "university": "우송대학교",
+    "admission_type": "학생부교과(교과면접전형)",
+    "department": "철도차량시스템학과",
+    "category": "학업",
+    "question": "본인이 가장 자신있었던 과목과 그 과목이 철도와 무슨 관련이 있는지 설명하세요.",
+    "search_context": "[철도차량시스템학과|학업|수학|전공 연관성]"
+  },
+  {
+    "university": "우송대학교",
+    "admission_type": "학생부교과(교과면접전형)",
+    "department": "철도차량시스템학과",
+    "category": "진로",
+    "question": "우송대학교 철도차량시스템학과만의 특색을 설명하세요.",
+    "search_context": "[철도차량시스템학과|진로|우송대학교|학과 특색]"
+  },
+  {
+    "university": "우송대학교",
+    "admission_type": "학생부교과(교과면접전형)",
+    "department": "철도차량시스템학과",
+    "category": "인성",
+    "question": "갈등 상황이 발생했을 때 가장 중요하게 생각하는 것은?",
+    "search_context": "[철도차량시스템학과|인성|갈등 해결|상황 파악]"
+  },
+  {
+    "university": "우송대학교",
+    "admission_type": "학생부교과(교과면접전형)",
+    "department": "철도차량시스템학과",
+    "category": "인성",
+    "question": "본인의 강점은 무엇인가?",
+    "search_context": "[철도차량시스템학과|인성|강점|통솔력 있는 리더십]"
+  },
+  {
+    "university": "우송대학교",
+    "admission_type": "학생부교과(교과면접전형)",
+    "department": "철도차량시스템학과",
+    "category": "진로",
+    "question": "10년 뒤에 자기 모습은 어떤 모습일지 설명해 보세요",
+    "search_context": "[철도차량시스템학과|진로|미래 계획|기관사]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "ICT융합학부",
+    "category": "인성",
+    "question": "간단한 자기소개 해주세요.",
+    "search_context": "[ICT융합학부|인성|자기소개|성장 경험]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "ICT융합학부",
+    "category": "학업",
+    "question": "수학 성적이 점점 낮아졌는데 그 이유와 앞으로 어떻게 하실 건가요?",
+    "search_context": "[ICT융합학부|학업|수학 성적|극복 방안]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "ICT융합학부",
+    "category": "진로",
+    "question": "우리 학과에 와서 무엇을 하고 싶나요?",
+    "search_context": "[ICT융합학부|진로|학과 활동|현장 실습]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "ICT융합학부",
+    "category": "학업",
+    "question": "자기소개에 나온 내용 중에 정보 시간에 한 프로젝트에서 성취감을 느꼈다고 하셨는데 어떤 부분에서 성취감을 느끼셨나요?",
+    "search_context": "[ICT융합학부|학업|정보 시간 프로젝트|성취감]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "ICT융합학부",
+    "category": "리더십",
+    "question": "고교생활 중 부반장과 동아리장을 하셨다고 했는데 반을 이끌어가거나 동아리 활동을 하는 부분에서 어려움이나 힘들었던 부분은 없었나요?",
+    "search_context": "[ICT융합학부|리더십|동아리장|어려움 극복]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "간호학과",
+    "category": "진로",
+    "question": "간호학과 지원동기와 자기소개 해주세요.",
+    "search_context": "[간호학과|진로|지원동기|자기소개]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "간호학과",
+    "category": "인성",
+    "question": "미인정 지각이 2번 있는데 이유가 있나요?",
+    "search_context": "[간호학과|인성|지각|자기 관리]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "간호학과",
+    "category": "학업",
+    "question": "어려웠던 학업이 무엇이고 어떻게 극복했나요?",
+    "search_context": "[간호학과|학업|어려움 극복|수학]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "글로벌인문학부",
+    "category": "진로",
+    "question": "지원동기가 무엇인가요?",
+    "search_context": "[글로벌인문학부|진로|지원동기|학과 지원 동기]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "글로벌인문학부",
+    "category": "진로",
+    "question": "두 개의 트랙을 선택할 수 있는데 그렇다면 나머지 트랙은 무엇을 할 것인가요?",
+    "search_context": "[글로벌인문학부|진로|트랙 선택 계획|학과 이해 및 계획]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "글로벌인문학부",
+    "category": "학업",
+    "question": "그렇다면 국어 실력을 늘리기 위해 최근에 노력한 일이 있나요?",
+    "search_context": "[글로벌인문학부|학업|국어 실력 향상 노력|자기 주도 학습]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "글로벌인문학부",
+    "category": "독서",
+    "question": "그러면 최근에 인상깊게 본 작품이 있나요?",
+    "search_context": "[글로벌인문학부|독서|인상 깊은 작품|독서 경험 및 사고력]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "글로벌인문학부",
+    "category": "진로",
+    "question": "생활기록부를 보니 미술 관련 진로도 생각했었던 것 같은데, 바뀌게 된 이유가 있나요?",
+    "search_context": "[글로벌인문학부|진로|미술 진로 변경|진로 탐색 과정]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "글로벌인문학부",
+    "category": "인성",
+    "question": "자신의 장점은 무엇이라 생각하나요?",
+    "search_context": "[글로벌인문학부|인성|장점|자기 이해]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "디자인융합학부",
+    "category": "진로",
+    "question": "고등학교 3년 내내 지원자가 디자인융합학부에 합격 하기 위해 했던 활동들은 무엇인가요?",
+    "search_context": "[디자인융합학부|진로|학과 관련 활동|학과 적합성]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "디자인융합학부",
+    "category": "봉사",
+    "question": "봉사활동 기록이 되게 많은데 어떤 활동들을 하셨죠?",
+    "search_context": "[디자인융합학부|봉사|봉사활동 경험|봉사 정신]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "디자인융합학부",
+    "category": "세특",
+    "question": "패스트패션에 관해 탐구하고 발표했던 내용들이 꽤 많은데 패스트패션의 문제점과 해결 방안을 뭘까요?",
+    "search_context": "[디자인융합학부|세특|패스트패션 문제점 해결|탐구 내용 이해 및 비판적 사고]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "디자인융합학부",
+    "category": "학업",
+    "question": "2학년 2학기 때 갑자기 성적이 확 올랐는데 이유는 뭐 때문이고 어떤 학습 방법으로 올렸었나요?",
+    "search_context": "[디자인융합학부|학업|성적 향상 학습 방법|학업 성취 과정]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "디자인융합학부",
+    "category": "인성",
+    "question": "만약에 디자인 융합학부에 다니게 되면 본인이 생각했을 때 본인의 장단점을 말해보세요.",
+    "search_context": "[디자인융합학부|인성|장단점|학과 적합성 및 자기 이해]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "디자인융합학부",
+    "category": "진로",
+    "question": "만약 디자인융합학부를 졸업 하면 그 후의 계획은 무엇인가요?",
+    "search_context": "[디자인융합학부|진로|졸업 후 계획|구체적 진로 목표]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "미래모빌리티공학부",
+    "category": "진로",
+    "question": "자기소개 및 학과에 지원하게 된 동기를 설명해 주세요.",
+    "search_context": "[미래모빌리티공학부|진로|자기소개 지원동기|학과 지원 동기]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "미래모빌리티공학부",
+    "category": "학업",
+    "question": "우리 학과에서 가장 중요한 과목이 무엇이라고 생각하시나요?",
+    "search_context": "[미래모빌리티공학부|학업|중요 과목|학과 교육과정 이해]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "미래모빌리티공학부",
+    "category": "학업",
+    "question": "수학 교과 성적이 좋지는 않은데 어떻게 생각하시나요? 그리고 어떻게 보완할 것인지 간단하게 설명해 주세요.",
+    "search_context": "[미래모빌리티공학부|학업|수학 성적 보완|학업 역량 및 개선 의지]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "미래모빌리티공학부",
+    "category": "봉사",
+    "question": "봉사활동 경험이 상당히 많은 편인데, 이 중에서 가장 기억에 남는 활동이 있나요?",
+    "search_context": "[미래모빌리티공학부|봉사|봉사활동 경험|봉사 정신]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "미래모빌리티공학부",
+    "category": "세특",
+    "question": "교과 시간에 과학과 관련된 탐구를 많이 진행한 거 같은데, 탐구한 내용 중 가장 기억에 남는 활동이 있나요?",
+    "search_context": "[미래모빌리티공학부|세특|과학 탐구 활동|탐구 역량 및 심화 학습]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "바이오메디컬헬스학부",
+    "category": "인성",
+    "question": "자기소개를 해주세요.",
+    "search_context": "[바이오메디컬헬스학부|인성|자기소개|자기 이해 및 강점]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "바이오메디컬헬스학부",
+    "category": "진로",
+    "question": "바이오메디컬헬스학부에서 어떤 전공을 하고 싶은지?",
+    "search_context": "[바이오메디컬헬스학부|진로|희망 전공|학과 교육과정 이해]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "바이오메디컬헬스학부",
+    "category": "진로",
+    "question": "졸업 후 진로?",
+    "search_context": "[바이오메디컬헬스학부|진로|졸업 후 진로|구체적 진로 목표]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "진로",
+    "question": "안녕하세요. 울산대학교 잠재역량전형 자율전공학부 면접 시작하겠습니다. 우리 학교 아산아너스 칼리지 자율전공학부에 지원하셨는데 지원동기를 중심으로 짧게 자기소개를 해주세요.",
+    "search_context": "[자율전공학부|진로|지원동기|자기소개]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "인성",
+    "question": "군대를 다녀오고 나서 지원을 한 건가요? 졸업한 지 꽤 시간이 지난 것 같은데요?",
+    "search_context": "[자율전공학부|인성|지원시기|개인배경]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "진로",
+    "question": "과학 교사를 꿈꾸고 있네요?",
+    "search_context": "[자율전공학부|진로|과학 교사|장래희망]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "진로",
+    "question": "사범대학교에 지원하지 않고 우리 학교에 지원한 특별한 이유가 있나요?",
+    "search_context": "[자율전공학부|진로|사범대 미지원|학과 선택 이유]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "학업",
+    "question": "왜 여러 학문 중에 특히 과학과 생명과학에 큰 흥미를 가지게 됐나요?",
+    "search_context": "[자율전공학부|학업|과학 생명과학|흥미 계기]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "학업",
+    "question": "생명과학의 다양한 분야에 대해서 말해보세요.",
+    "search_context": "[자율전공학부|학업|생명과학 분야|전공 이해도]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "학업",
+    "question": "과학 성적은 우수한 반면, 여러 과목에서 성적 편차가 조금 있는데 이에 대해 이야기해 주세요.",
+    "search_context": "[자율전공학부|학업|성적 편차|자기 성찰]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "학업",
+    "question": "사회과목 이수가 다른 지원자들에 비해 적은데 왜 그런가요?",
+    "search_context": "[자율전공학부|학업|사회과목 이수|선택 이유]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "인성",
+    "question": "생활기록부를 살펴보면 인성적인 부분의 평가가 좋은데 이에 대해 어떻게 생각하나요?",
+    "search_context": "[자율전공학부|인성|생기부 인성|자기 인식]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "자율전공학부",
+    "category": "인성",
+    "question": "마지막으로 준비했는데 하지 못한 말이나 하고 싶은 말이 있으면 해보세요.",
+    "search_context": "[자율전공학부|인성|마지막 할 말|입학 포부]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "전기전자융합학부",
+    "category": "진로",
+    "question": "자기소개 시작해 보세요.",
+    "search_context": "[전기전자융합학부|진로|자기소개|지원동기]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "전기전자융합학부",
+    "category": "진로",
+    "question": "이 학과에서 무엇을 배워보고 싶나요?",
+    "search_context": "[전기전자융합학부|진로|학업 계획|전공 관심]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "전기전자융합학부",
+    "category": "진로",
+    "question": "이 과에 지원한 이유가 무엇입니까?",
+    "search_context": "[전기전자융합학부|진로|지원동기|전공 선택]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "전기전자융합학부",
+    "category": "봉사",
+    "question": "출석을 보면 개근인데 성실하네요. 자신의 봉사활동 중 가장 기억에 남는 활동이 있나요?",
+    "search_context": "[전기전자융합학부|봉사|기억에 남는 봉사|성실성]"
+  },
+  {
+    "university": "울산대학교",
+    "admission_type": "학생부종합(잠재역량 특별전형)",
+    "department": "전기전자융합학부",
+    "category": "진로",
+    "question": "심리학 분야에서 전기전자 분야로 진로가 변경된 이유는 무엇입니까?",
+    "search_context": "[전기전자융합학부|진로|진로 변경|전기전자 선택 이유]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "학업",
+    "question": "현재 우리나라에 미국에 공장을 짓는 기업이 많은데 지원금을 받으면 중국에 수출을 많이 못할텐데 이런 상황에서는 어떻게 대처해야 할까?",
+    "search_context": "[자연계열|학업|국제 경제|반도체 산업]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "우리나라에서 삼성의 반도체 지분은 상당하다. 하지만 삼성 오너가에 대한 논란도 항상 있어 왔다. 우리나라에서 삼성이라는 중요성이 큰 만큼 삼성 기업을 위한 법률을 만들어 주는 것에 대해서는 어떻게 생각하는가?",
+    "search_context": "[자연계열|인성|기업 윤리|사회적 책임]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "진로",
+    "question": "지원동기를 말해 보세요.",
+    "search_context": "[자연계열|진로|육군사관학교|지원 동기]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "학업",
+    "question": "무기와 무기 체계를 구분할 줄 아는가?",
+    "search_context": "[자연계열|학업|군사 지식|무기 체계]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "최근 친구들이랑 놀 때는 주로 무엇을 하고 놀았는가?",
+    "search_context": "[자연계열|인성|대인 관계|여가 활동]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "인생에서 가장 힘들었던 때는 언제였는가?",
+    "search_context": "[자연계열|인성|어려움 극복|가족 관계]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "리더십",
+    "question": "리더십을 발휘할 때 가장 힘들었던 점은 무엇이었는가?",
+    "search_context": "[자연계열|리더십|갈등 관리|문제 해결]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "진로",
+    "question": "육군사관학교에 진학한 이후 원하는 과목을 수강하지 못할 수도 있는데 그래도 괜찮은가?",
+    "search_context": "[자연계열|진로|육사 교육과정|적응력]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "육군사관학교를 진학한다고 했을 때 부모님의 반응은?",
+    "search_context": "[자연계열|인성|가족 관계|진로 결정]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "차렷 자세 취해 보세요",
+    "search_context": "[자연계열|인성|외적 자세|군인 자세]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "쪼그려 앉아 보세요",
+    "search_context": "[자연계열|인성|외적 자세|군인 자세]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "선을 따라서 한 바퀴 걸어 보세요",
+    "search_context": "[자연계열|인성|외적 자세|군인 자세]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "문장을 최대한 크게 말해보세요.",
+    "search_context": "[자연계열|인성|발성|군인 자세]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "(발음하기 어려운 문장을 주며) 이 문장을 읽어보세요.",
+    "search_context": "[자연계열|인성|발음|군인 자세]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "고치고 싶은 점에 대해서 말해주세요.",
+    "search_context": "[자연계열|인성|장단점|자기 성찰]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "앞에서 진행했던 면접들 중에서 아쉬웠던 면접은?",
+    "search_context": "[자연계열|인성|면접 경험|자기 반성]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "이게 마지막 면접인데 자신의 장점을 뽐내 보세요.",
+    "search_context": "[자연계열|인성|자기 PR|강점 어필]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "진로",
+    "question": "실기 성적이 좋은데 언제부터 육군사관학교 진학하기를 원했는가?",
+    "search_context": "[자연계열|진로|육사 지원 계기|준비 과정]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "마지막으로 하고 싶은 말은?",
+    "search_context": "[자연계열|인성|마지막 어필|지원 의지]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "학업",
+    "question": "제시문의 내용을 요약하고 자신의 생각을 말해보시오.",
+    "search_context": "[자연계열|학업|북한 정세|안보관]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "자신이 가지고 있던 성격 중 고치고 싶은 성격은 무엇인가?",
+    "search_context": "[자연계열|인성|장단점|자기 성찰]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "독서",
+    "question": "(앞선 대답에서 군 관련 책이나 정보를 많이 알고 있다고 답함.) 가장 인상 깊게 읽었던 책이 무엇인가요?",
+    "search_context": "[자연계열|독서|군사 관련 서적|관심 분야]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "진로",
+    "question": "지원하게 된 동기가 무엇인가요?",
+    "search_context": "[자연계열|진로|육군사관학교|지원 동기]"
+  },
+  {
+    "university": "육군사관학교",
+    "admission_type": "학교장 추천전형(우선 선발)",
+    "department": "자연계열",
+    "category": "인성",
+    "question": "마지막으로 하고 싶은 한마디 준비한 것이 있다면 해보세요.",
+    "search_context": "[자연계열|인성|마지막 어필|지원 의지]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(Cogito자기추천전형)",
+    "department": "에너지신소재공학과",
+    "category": "진로",
+    "question": "이 학과에 지원하게 된 동기가 있나요?",
+    "search_context": "[에너지신소재공학과|진로|지원동기|학과 지원 동기]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(Cogito자기추천전형)",
+    "department": "에너지신소재공학과",
+    "category": "리더십",
+    "question": "1,2학년에 학급 반장을 했다고 나와있는데 하면서 좋았던 점 하나 힘들었던 점 하나를 말해주세요.",
+    "search_context": "[에너지신소재공학과|리더십|반장 경험|리더십 경험과 느낀점]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(Cogito자기추천전형)",
+    "department": "에너지신소재공학과",
+    "category": "학업",
+    "question": "일반 과목 외에도 고급화학, 화학실험, 생명과학실험을 했다고 나와있는데 구체적으로 어떤 걸 배웠는지 말해주시겠어요?",
+    "search_context": "[에너지신소재공학과|학업|고급화학|심화 과목 학습 내용]"
+  },
+  {
+    "university": "건국대학교",
+    "admission_type": "학생부종합(Cogito자기추천전형)",
+    "department": "에너지신소재공학과",
+    "category": "세특",
+    "question": "미래 식량 창업 활동은 구체적으로 어떤 걸 했나요?",
+    "search_context": "[에너지신소재공학과|세특|미래 식량 창업|창업 활동 내용]"
+  },
+  {
+    "university": "건국대학교(글로컬캠퍼스)",
+    "admission_type": "실기(체육특기자전형)",
+    "department": "스포츠건강학과",
+    "category": "진로",
+    "question": "우리학교에 지원하게 된 동기는 무엇이며 오게 된다면 향후 계획은?",
+    "search_context": "[스포츠건강학과|진로|지원동기|입학 후 계획]"
+  },
+  {
+    "university": "건국대학교(글로컬캠퍼스)",
+    "admission_type": "실기(체육특기자전형)",
+    "department": "스포츠건강학과",
+    "category": "학업",
+    "question": "스포츠 과학을 이용해 운동을 한 사례를 설명하고 그 운동을 통해서 무슨 효과를 느꼈는지 설명",
+    "search_context": "[스포츠건강학과|학업|스포츠 과학|운동 사례와 효과]"
+  },
+  {
+    "university": "건국대학교(글로컬캠퍼스)",
+    "admission_type": "실기(체육특기자전형)",
+    "department": "스포츠건강학과",
+    "category": "인성",
+    "question": "우리학교에 오게된다면 무슨 방법으로 기여를 할것인가",
+    "search_context": "[스포츠건강학과|인성|학교 기여|입학 후 기여 방안]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "공공인재학부",
+    "category": "리더십",
+    "question": "3학년때 반장했는데 본인의 리더쉽은 무엇이라 생각?",
+    "search_context": "[공공인재학부|리더십|반장 경험|리더십 발휘 사례]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "공공인재학부",
+    "category": "학업",
+    "question": "영어 독해와 작문 → 애덤 스미스의 내용에 동의하였는데, 큰 정부보다 작은 정부 선호한다는 뜻?",
+    "search_context": "[공공인재학부|학업|애덤 스미스|경제 사상 이해]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "공공인재학부",
+    "category": "학업",
+    "question": "+시장실패란 어떤 경우?",
+    "search_context": "[공공인재학부|학업|시장실패|경제 개념 이해]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "공공인재학부",
+    "category": "세특",
+    "question": "민주시민 → 기자의 사건개입은 옳은가에 대한 탐구하였는데 자신의 생각?",
+    "search_context": "[공공인재학부|세특|기자 역할|언론 윤리]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "공공인재학부",
+    "category": "학업",
+    "question": "통합사회 → 새정부가 잘해내길 바란다 하였는데 자신이 생각하는 정부의 역할?",
+    "search_context": "[공공인재학부|학업|정부 역할|정부의 기능과 책임]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "공공인재학부",
+    "category": "인성",
+    "question": "기자의 문제점? 역할?(정확히 기억나진 않음)을 본인 소신껏",
+    "search_context": "[공공인재학부|인성|기자 역할|언론의 문제점과 역할]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "공공인재학부",
+    "category": "세특",
+    "question": "정량평가 정성평가 모두 활용한 활동한 적이 있는지?",
+    "search_context": "[공공인재학부|세특|정량 정성평가|탐구 활동 방법론]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "공공인재학부",
+    "category": "세특",
+    "question": "+그 내용 설명해주세요",
+    "search_context": "[공공인재학부|세특|부동산 탐구|탐구 활동 내용 설명]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "영어영문학과",
+    "category": "인성",
+    "question": "1학년때 학교를 옮긴적이 있나요?",
+    "search_context": "[영어영문학과|인성|전학 경험|개인 배경 확인]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "영어영문학과",
+    "category": "세특",
+    "question": "AI를 활용한 영어 교육방법에 관해 보고서를 작성했다고 되어있는데 그 부분에 대해 간단히 설명해주세요. (실제 사례 포함)",
+    "search_context": "[영어영문학과|세특|AI 영어 교육|보고서 내용 설명]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "영어영문학과",
+    "category": "인성",
+    "question": "학급행사에 주도적으로 참여했다고 기록되어 있는데, 가장 의미 있었던 활동하나와 어떤 노력을 기울였는지 말해 보세요.",
+    "search_context": "[영어영문학과|인성|학급 행사|협업 경험과 노력]"
+  },
+  {
+    "university": "경기대학교",
+    "admission_type": "학생부종합(KGU학생부종합전형)",
+    "department": "영어영문학과",
+    "category": "진로",
+    "question": "입학후의 학업계획에 대해 말씀해보세요.",
+    "search_context": "[영어영문학과|진로|학업 계획|입학 후 학업 및 진로 계획]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "유아교육과",
+    "category": "진로",
+    "question": "그 목표를 어떻게 실현하나요?",
+    "search_context": "[유아교육과|진로|목표실현|진로계획]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "유아교육과",
+    "category": "동아리",
+    "question": "그렇다면 동아리나 진로활동 등에서 유아교육과 관련하여 한 활동이 있나요?",
+    "search_context": "[유아교육과|동아리|진로활동|관련경험]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "유아교육과",
+    "category": "인성",
+    "question": "그럼, 유아교육에 있어서 자신의 강점이랑 단점이 있나요?",
+    "search_context": "[유아교육과|인성|강점단점|자기분석]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "의류산업학과",
+    "category": "진로",
+    "question": "학과에 지원하게 된 동기를 말해 보세요.",
+    "search_context": "[의류산업학과|진로|지원동기|학과관심]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "의류산업학과",
+    "category": "학업",
+    "question": "고등학교에서 배운 과목 중 이 학과와 관련 있다고 생각하는 과목은?",
+    "search_context": "[의류산업학과|학업|관련과목|학업역량]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "의류산업학과",
+    "category": "진로",
+    "question": "학과와 관련해서 한 활동이 있다면?",
+    "search_context": "[의류산업학과|진로|관련활동|탐구경험]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "의류산업학과",
+    "category": "학업",
+    "question": "의류 산업학과에서 가장 관심 있는 과목은?",
+    "search_context": "[의류산업학과|학업|관심과목|학업계획]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "인공지능데이터사이언스학과",
+    "category": "리더십",
+    "question": "본인이 생각하기에 이화여대에 추천받은 이유는 무엇인가요?",
+    "search_context": "[인공지능데이터사이언스학과|리더십|추천이유|자기평가]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "인공지능데이터사이언스학과",
+    "category": "인성",
+    "question": "본인이 발전하기 위해서는 단점을 극복하는 것 역시 중요한데, 본인이 생각하는 본인의 단점과 극복하기 위해 노력하고 있는 점에 대해 말해 보세요.",
+    "search_context": "[인공지능데이터사이언스학과|인성|단점극복|성장노력]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "인공지능데이터사이언스학과",
+    "category": "진로",
+    "question": "왜 다른 학과가 아닌 우리 학과를 지원했는지요?",
+    "search_context": "[인공지능데이터사이언스학과|진로|지원동기|학과선택이유]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "인공지능데이터사이언스학과",
+    "category": "진로",
+    "question": "졸업 후 본인이 어떤 일을 하고 있을 것 같나요?",
+    "search_context": "[인공지능데이터사이언스학과|진로|졸업후계획|미래설계]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "인공지능데이터사이언스학과",
+    "category": "리더십",
+    "question": "리더로서 많은 역할을 한 것 같은데 리더가 가져야 할 가장 중요한 자질이 무엇이라 생각하는지요?",
+    "search_context": "[인공지능데이터사이언스학과|리더십|리더자질|역량평가]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "인공지능데이터사이언스학과",
+    "category": "인성",
+    "question": "마지막으로 하고 싶은 말 있으면 말해 보세요.",
+    "search_context": "[인공지능데이터사이언스학과|인성|마지막어필|지원자의지]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "정치외교학과",
+    "category": "진로",
+    "question": "지원 동기를 말씀해 주세요.",
+    "search_context": "[정치외교학과|진로|지원동기|학과관심]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "정치외교학과",
+    "category": "학업",
+    "question": "생기부를 보면 법 위주로 되어있는데, 법과 국제정치가 어떤 관계가 있다고 생각하나요?",
+    "search_context": "[정치외교학과|학업|법국제정치|융합적사고]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "정치외교학과",
+    "category": "진로",
+    "question": "난민에 관심이 많은 것 같은데, 살면서 외국인을 만난 경험이 많았나요?",
+    "search_context": "[정치외교학과|진로|난민관심|경험여부]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "정치외교학과",
+    "category": "진로",
+    "question": "난민이 재정착하게 된다면 많은 종교적, 문화적 갈등이 있을 건데, 어떤 방식으로 해결해야 하나요?",
+    "search_context": "[정치외교학과|진로|난민갈등|해결방안]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과-고교추천전형",
+    "department": "정치외교학과",
+    "category": "진로",
+    "question": "우리나라 국민은 다수고 난민들은 그에 비하면 너무 소수인데, 그럼 너무 비효율적이지 않나요? 차라리 그럴거면 난민들이 우리나라에 대한 교육을 받는 것이 낫지 않나요?",
+    "search_context": "[정치외교학과|진로|난민정책|효율성논의]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "미상",
+    "department": "통계학과",
+    "category": "진로",
+    "question": "통계학과에 지원한 동기를 말해보세요.",
+    "search_context": "[통계학과|진로|지원동기|학과 지원 동기]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "미상",
+    "department": "통계학과",
+    "category": "독서",
+    "question": "통계 관련 읽은 책이 있습니까?",
+    "search_context": "[통계학과|독서|통계 관련 서적|독서 경험]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "미상",
+    "department": "통계학과",
+    "category": "학업",
+    "question": "지원동기에서의 프로그램 제작에 대해 설명해 보세요.",
+    "search_context": "[통계학과|학업|프로그램 제작|활동 설명]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "미상",
+    "department": "통계학과",
+    "category": "독서",
+    "question": "통계 관련하여 읽은 다른 책이 있나요?",
+    "search_context": "[통계학과|독서|통계 관련 서적|독서 경험]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "미상",
+    "department": "통계학과",
+    "category": "인성",
+    "question": "마지막으로 할 말이 있나요?",
+    "search_context": "[통계학과|인성|마지막 할 말|면접 마무리]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화공신소재공학과",
+    "category": "진로",
+    "question": "이 과를 지원한 동기를 말해 보세요.",
+    "search_context": "[화공신소재공학과|진로|지원동기|학과 지원 동기]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화공신소재공학과",
+    "category": "동아리",
+    "question": "동아리 활동 중에 수술실 CCTV 설치에 대해 반대한 근거가 무엇인지요?",
+    "search_context": "[화공신소재공학과|동아리|수술실 CCTV|사회 이슈 토론]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화공신소재공학과",
+    "category": "학업",
+    "question": "성적이 삼 년동안 우상향인데 어떻게 한 건가요?",
+    "search_context": "[화공신소재공학과|학업|성적 향상|학습 방법]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화공신소재공학과",
+    "category": "세특",
+    "question": "3학년 활동 중 생체센서에 대한 보고서 중에 광바이오 센서에 대해서 자세히 설명해 주세요.",
+    "search_context": "[화공신소재공학과|세특|생체센서|광바이오 센서 설명]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "진로",
+    "question": "먼저, 우리 학과에 지원하게 된 동기 말해주세요.",
+    "search_context": "[화학·나노과학과|진로|지원동기|학과 지원 동기]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "인성",
+    "question": "우리 학과와 잘맞다고 생각하는 본인의 역량이나 강점 말해주세요.",
+    "search_context": "[화학·나노과학과|인성|역량|강점]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "리더십",
+    "question": "고등학교 3년간 다양한 활동들을 했는데 이 중에서 자신이 기여한 게 가장 크다고 생각하는 활동은 뭔지 말해주세요.",
+    "search_context": "[화학·나노과학과|리더십|기여 활동|주도적 경험]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "학업",
+    "question": "성적이 향상되는 양상을 보이는데 이 과정에서 어려움이나 힘든 점 없었는지 어떻게 극복했나요.",
+    "search_context": "[화학·나노과학과|학업|성적 향상|어려움 극복]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "세특",
+    "question": "앞서 말한 DNA 전기영동실험에서 DNA 이동속도에 차이를 주는 요인이 뭐라고 알고 있는가?",
+    "search_context": "[화학·나노과학과|세특|DNA 전기영동|실험 원리]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "세특",
+    "question": "그럼, DNA 크기가 어떻게 속도에 영향 주는 것 같나요?",
+    "search_context": "[화학·나노과학과|세특|DNA 크기|실험 원리]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "세특",
+    "question": "3학년 활동 중 생체센서에 대한 보고서 중에 광바이오 센서에 대해서 자세히 설명해 주세요.",
+    "search_context": "[화학·나노과학과|세특|생체센서|광바이오 센서 설명]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "세특",
+    "question": "DNA 크기가 미치는 다른 영향은 없을까요?",
+    "search_context": "[화학·나노과학과|세특|DNA 크기|실험 원리]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "세특",
+    "question": "그럼 그 음전하가 어떤 영향을 줄 것 같죠?",
+    "search_context": "[화학·나노과학과|세특|DNA 음전하|실험 원리]"
+  },
+  {
+    "university": "이화여자대학교",
+    "admission_type": "학생부교과(고교추천전형)",
+    "department": "화학·나노과학과",
+    "category": "인성",
+    "question": "마지막으로 하고 싶은 데 못한 말 있으면 해주세요.",
+    "search_context": "[화학·나노과학과|인성|마지막 할 말|면접 마무리]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(지역인재Ⅰ전형)",
+    "department": "간호학과",
+    "category": "진로",
+    "question": "자기소개와 인제대학교에 지원한 지원동기를 말해보세요.",
+    "search_context": "[간호학과|진로|지원동기|자기소개]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(지역인재Ⅰ전형)",
+    "department": "간호학과",
+    "category": "리더십",
+    "question": "친구들이 자신의 긍정적인 면모 때문에 반장으로 뽑아주었다고 생각하나요?",
+    "search_context": "[간호학과|리더십|반장 경험|인성]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(지역인재Ⅰ전형)",
+    "department": "간호학과",
+    "category": "인성",
+    "question": "자신에게 과분하다고 생각되는 일을 최선을 다해 끝까지 수행하였던 경험을 말해보세요.",
+    "search_context": "[간호학과|인성|과제 집착력|어려움 극복 경험]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(지역인재Ⅰ전형)",
+    "department": "간호학과",
+    "category": "진로",
+    "question": "간호학과 진학을 위해 세운 계획과 실행 경험을 구체적으로 말해보세요.",
+    "search_context": "[간호학과|진로|진학 계획|노력 경험]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "반려동물학과",
+    "category": "진로",
+    "question": "반려동물학과는 어떤 학문의 분야라고 생각하는지, 또 반려동물보건학의 어떤 세부 분야에 관심 이 있는지 말해보세요.",
+    "search_context": "[반려동물학과|진로|학과 이해|관심 분야]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "반려동물학과",
+    "category": "인성",
+    "question": "마지막으로 어필하고 싶은 것이 있다면 말해보세요.",
+    "search_context": "[반려동물학과|인성|지원 동기|마지막 어필]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "인성",
+    "question": "자기소개를 해보세요.",
+    "search_context": "[방사선학과|인성|자기소개|강점]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "진로",
+    "question": "방사선학과에 지원한 동기는 무엇입니까?",
+    "search_context": "[방사선학과|진로|지원 동기|학과 관심]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "진로",
+    "question": "방사선사가 무슨 일을 하는지 아는대로 말해 보세요.",
+    "search_context": "[방사선학과|진로|방사선사 역할|직업 이해]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "학업",
+    "question": "질량 보존 법칙이 무엇인가?",
+    "search_context": "[방사선학과|학업|질량 보존 법칙|과학 지식]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "학업",
+    "question": "에너지 보존 법칙이 무엇인가?",
+    "search_context": "[방사선학과|학업|에너지 보존 법칙|과학 지식]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "학업",
+    "question": "x선이 무엇인지 아는 대로 말해보세요.",
+    "search_context": "[방사선학과|학업|X선|전공 지식]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "학업",
+    "question": "아보가드로 수가 무엇인가요.",
+    "search_context": "[방사선학과|학업|아보가드로 수|과학 지식]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "학업",
+    "question": "고등학교 과학 수업 중 인상 깊었던 수업과 해당 내용을 이야기해 보세요.",
+    "search_context": "[방사선학과|학업|과학 수업|학습 경험]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "학업",
+    "question": "과학이 방사선학과에서 중요한데 학교에서 과학 공부를 어떻게 해나갈 것인지?",
+    "search_context": "[방사선학과|학업|과학 학습 계획|학업 의지]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "진로",
+    "question": "대학 합격 후 하고 싶은 일은 무엇입니까?",
+    "search_context": "[방사선학과|진로|대학 학업 계획|진로 계획]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "방사선학과",
+    "category": "인성",
+    "question": "교수님들 마음을 훔쳐보세요.",
+    "search_context": "[방사선학과|인성|지원 동기|마지막 어필]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "사회복지학과",
+    "category": "진로",
+    "question": "사회복지에 관심을 갖게 된 계기에 대해 말해보세요.",
+    "search_context": "[사회복지학과|진로|관심 계기|지원 동기]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "사회복지학과",
+    "category": "봉사",
+    "question": "지금까지 참여했던 자원봉사활동 내용에 대해 말해보세요.",
+    "search_context": "[사회복지학과|봉사|자원봉사활동|경험]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "사회복지학과",
+    "category": "동아리",
+    "question": "인제대학교 사회복지학과 동아리 중에 가장 관심이 있는 동아리는 무엇이고 왜 관심이 있는지 말해보세요.",
+    "search_context": "[사회복지학과|동아리|학과 동아리|관심 동아리]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "실내건축학과",
+    "category": "진로",
+    "question": "실내 건축학과에 지원하게 된 동기를 말해보세요.",
+    "search_context": "[실내건축학과|진로|지원 동기|학과 관심]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "실내건축학과",
+    "category": "진로",
+    "question": "실내건축학과 홈페이지에서 가장 관심 있는 내용은 무엇인가요? 이유는?",
+    "search_context": "[실내건축학과|진로|학과 홈페이지|관심 내용]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "실내건축학과",
+    "category": "인성",
+    "question": "본인의 사고방식을 크게 바꾸게 된 계기가 있었습니까? 그 후 삶은 어떻게 변화가 있었는지 말 해 보세요.",
+    "search_context": "[실내건축학과|인성|사고방식 변화|성장 경험]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(의예약학전형)",
+    "department": "약학과",
+    "category": "진로",
+    "question": "인제대학교 약학과에 지원하게 된 이유는 무엇인가요?",
+    "search_context": "[약학과|진로|지원 동기|학과 관심]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(의예약학전형)",
+    "department": "약학과",
+    "category": "진로",
+    "question": "약학과에 진학한 후 희망하는 진로가 있으면 말해보세요.",
+    "search_context": "[약학과|진로|진로 계획|희망 진로]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "일반면접",
+    "department": "임상병리학과",
+    "category": "학업",
+    "question": "생활과 윤리 과목에 대해 설명해주세요.",
+    "search_context": "[임상병리학과|학업|생활과 윤리|과목 이해도]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "일반면접",
+    "department": "임상병리학과",
+    "category": "학업",
+    "question": "생활과 윤리 과목의 내신등급은 어떻게 됩니까?",
+    "search_context": "[임상병리학과|학업|생활과 윤리|학업 성취도]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "일반면접",
+    "department": "임상병리학과",
+    "category": "진로",
+    "question": "입시설명회에서 임상병리학과에 관해 들은 내용이 있나요?",
+    "search_context": "[임상병리학과|진로|입시설명회|학과 관심도]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "일반면접",
+    "department": "임상병리학과",
+    "category": "진로",
+    "question": "과학분야에는 관심이 없는건가요?",
+    "search_context": "[임상병리학과|진로|과학|전공 적합성]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "일반면접",
+    "department": "임상병리학과",
+    "category": "인성",
+    "question": "마지막으로 이 말은 꼭 하고 가야겠다! 하는 게 있으신가요?",
+    "search_context": "[임상병리학과|인성|지원 의지|면접 마무리]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(지역인재Ⅰ전형)",
+    "department": "작업치료학과",
+    "category": "진로",
+    "question": "우리 학과에 지원한 동기와 자기 소개 해주세요.",
+    "search_context": "[작업치료학과|진로|지원 동기|자기소개]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(지역인재Ⅰ전형)",
+    "department": "작업치료학과",
+    "category": "세특",
+    "question": "고등학교 시절 가장 열심히 했던 활동이 있다면 예를 들어 설명하시오.",
+    "search_context": "[작업치료학과|세특|고등학교 활동|경험 및 역량]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(지역인재Ⅰ전형)",
+    "department": "작업치료학과",
+    "category": "리더십",
+    "question": "조별 과제를 한다면 어떤 역할을 맡고 싶습니까?",
+    "search_context": "[작업치료학과|리더십|조별 과제|협업 능력]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "제약공학과",
+    "category": "진로",
+    "question": "자기소개와 지원동기를 말해보세요.",
+    "search_context": "[제약공학과|진로|자기소개|지원동기]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "제약공학과",
+    "category": "진로",
+    "question": "대학 생활 동안 학과 전공 공부 이외에 계발하고 싶은 능력과 계획에 대해 말해보세요.",
+    "search_context": "[제약공학과|진로|자기계발|대학 생활 계획]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "제약공학과",
+    "category": "인성",
+    "question": "본인이 '잘할 수 있는 일과 본인이 '좋아하는 일' 중 어떤 직업을 선택하는 것이 바람직하겠습니까?",
+    "search_context": "[제약공학과|인성|직업 선택|가치관]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "특수교육과",
+    "category": "봉사",
+    "question": "장애 관련 봉사활동 경험을 통해 미래의 장애인 교육 및 복지의 바람직한 방향을 제시해보세요.",
+    "search_context": "[특수교육과|봉사|장애인 교육|봉사 경험]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "특수교육과",
+    "category": "진로",
+    "question": "장애관련 기사와 사회적 이슈에 대해 공동체의 한 구성원으로서 자신의 견해를 말해보세요.",
+    "search_context": "[특수교육과|진로|장애인 이슈|사회적 견해]"
+  },
+  {
+    "university": "인제대학교",
+    "admission_type": "학생부교과(면접전형)",
+    "department": "특수교육과",
+    "category": "진로",
+    "question": "사회에서 요구되는 특수교사의 자질을 어떠한지 말하고, 자질 중 자신의 장점과 단점도 함께 말해보세요.",
+    "search_context": "[특수교육과|진로|특수교사 자질|장단점]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "학업",
+    "question": "그럼 연소불안정에 대해서 아는 대로 설명해보세요.",
+    "search_context": "[항공우주공학과|학업|연소불안정|개념 설명]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "학업",
+    "question": "연소불안정이 발생하면 불이 꺼지는 건가요?",
+    "search_context": "[항공우주공학과|학업|연소불안정|개념 이해도 심화]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "학업",
+    "question": "우주쓰레기에 대해 탐구했는데 어떤 내용이었나요?",
+    "search_context": "[항공우주공학과|학업|우주쓰레기 탐구|탐구 내용 확인]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "학업",
+    "question": "우리가 보통 생각하는 우주쓰레기는 공중에 멈춰있지 않나요?",
+    "search_context": "[항공우주공학과|학업|우주쓰레기 궤도|개념 이해도 확인]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "학업",
+    "question": "그럼 그 쓰레기에는 어떤 힘이 작용할까요? 일단 중력이 작용하겠죠?",
+    "search_context": "[항공우주공학과|학업|우주쓰레기 힘|과학적 원리 이해]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "학업",
+    "question": "그런 경우에 어떤 궤도로 돌까요?",
+    "search_context": "[항공우주공학과|학업|우주쓰레기 궤도|과학적 원리 적용]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "세특",
+    "question": "생기부에 수업 참여 태도가 좋다고 쓰여 있는데, 어떻게 수업을 들었길래 이런 내용이 쓰였나요?",
+    "search_context": "[공통|세특|수업 참여 태도|생기부 내용 구체화]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "세특",
+    "question": "종이접기로 이차곡선을 만들었다고 했는데 설명해주세요.",
+    "search_context": "[수학|세특|이차곡선 종이접기|활동 내용 설명]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "세특",
+    "question": "인공지능 시간에 은하를 분류하는 활동을 했는데 이 활동을 왜 했고 어떻게 했는지 설명해보세요.",
+    "search_context": "[인공지능|세특|은하 분류 활동|활동 동기 및 과정 설명]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "학업",
+    "question": "굳이 서포트 벡터 머신을 사용한 이유는?",
+    "search_context": "[인공지능|학업|서포트 벡터 머신|기술 선택 이유 확인]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "학업",
+    "question": "다른 방법으로는 뭐 썼어요?",
+    "search_context": "[인공지능|학업|분류 방법|관련 지식 확장 확인]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "진로",
+    "question": "인공지능과 기계학습 관련 내용이 많은데, 컴퓨터공학과에 지원하지 않은 이유가 무엇인가요?",
+    "search_context": "[항공우주공학과|진로|컴퓨터공학과 미지원|진로 선택의 일관성 확인]"
+  },
+  {
+    "university": "인하대학교",
+    "admission_type": "학생부종합",
+    "department": "항공우주공학과",
+    "category": "인성",
+    "question": "마지막으로 하고 싶은 말 있으면 해 보세요.",
+    "search_context": "[공통|인성|마지막 할 말|지원자의 포부 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "농업생명과학계열",
+    "category": "인성",
+    "question": "자기소개 부탁드립니다.",
+    "search_context": "[농업생명과학계열|인성|자기소개|지원자 파악]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "농업생명과학계열",
+    "category": "세특",
+    "question": "활동 중 기억에 남는 자율활동이 있나요?",
+    "search_context": "[농업생명과학계열|세특|자율활동 식물|활동 내용 및 인상 깊었던 점 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "농업생명과학계열",
+    "category": "진로",
+    "question": "생활기록부를 보면 진로가 명확한데 왜 굳이 1학년 때 전공이 아닌 공통과목을 듣는 전북대에 지원했나요?",
+    "search_context": "[농업생명과학계열|진로|전북대 지원 동기|진로 계획 및 대학 선택 이유 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "농업생명과학계열",
+    "category": "학업",
+    "question": "주변에 농업 지식을 얻을 수 있는 사람이 있었나요?",
+    "search_context": "[농업생명과학계열|학업|농업 지식 습득|학습 환경 및 자원 활용 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "농업생명과학계열",
+    "category": "학업",
+    "question": "생명 과학 배우면서 가장 인상 깊었던 파트가 있나요?",
+    "search_context": "[농업생명과학계열|학업|생명 과학 파트|학업적 관심사 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "농업생명과학계열",
+    "category": "학업",
+    "question": "인상 깊었던 이유가 있을까요?",
+    "search_context": "[농업생명과학계열|학업|생명 과학 파트|학업적 관심사 심화 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "농업생명과학계열",
+    "category": "인성",
+    "question": "마지막 하고 싶은 말이 있으면 해주세요.",
+    "search_context": "[농업생명과학계열|인성|마지막 할 말|지원자의 포부 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "농업생명과학계열",
+    "category": "학업",
+    "question": "방금 답변에서 뜻하는 식물은 무엇인가요? 식물은 너무 포괄적이니 자신이 생각하는 한 가지를 말해주세요.",
+    "search_context": "[농업생명과학계열|학업|식물 개념 구체화|답변의 구체성 및 사고력 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "수의예과",
+    "category": "진로",
+    "question": "의학에 관심이 많아 보이는데, 의예과가 아닌 수의예과에 지원한 이유는 무엇인가요?",
+    "search_context": "[수의예과|진로|수의예과 지원 동기|진로 선택의 일관성 및 동기 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "수의예과",
+    "category": "진로",
+    "question": "수의과대학이 전국에 10개가 있는데, 전북대학교에 지원한 이유는 무엇인가요?",
+    "search_context": "[수의예과|진로|전북대 지원 동기|대학 선택의 구체적인 이유 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "수의예과",
+    "category": "인성",
+    "question": "전북대학교가 본인을 뽑아야 하는 이유가 무엇인가요?",
+    "search_context": "[수의예과|인성|전북대 합격 이유|지원자의 강점 및 기여도 확인]"
+  },
+  {
+    "university": "전북대학교",
+    "admission_type": "학생부종합(큰사람전형)",
+    "department": "수의예과",
+    "category": "진로",
+    "question": "전북대학교에 진학한 후, 학업이나 진로 계획이 있나요?",
+    "search_context": "[수의예과|진로|학업 및 진로 계획|구체적인 학업 및 진로 계획 확인]"
+  }
+]

@@ -63,6 +63,8 @@ class InitializeInterviewRequest(BaseModel):
     """면접 초기화 요청"""
     record_id: int = Field(..., description="생기부 ID")
     difficulty: str = Field("Normal", description="면접 난이도 (Easy, Normal, Hard)")
+    target_university: str = Field(..., description="지원 대학교 (예: 가천대학교, 한양대학교)")
+    target_department: str = Field(..., description="지원 학과 (예: 컴퓨터공학과)")
     first_answer: str = Field(..., description="첫 답변 (자기소개)")
     response_time: int = Field(..., description="첫 답변 소요 시간 (초)")
 

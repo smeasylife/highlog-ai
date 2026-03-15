@@ -135,3 +135,27 @@ class InterviewSession(Base):
     # 관계
     user = relationship("User")
     record = relationship("StudentRecord")
+
+
+class InterviewData(Base):
+    """면접 질문 데이터 베이스 - 대입 면접 후기 질문들"""
+    __tablename__ = "interview_data"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+
+    # 1. 메타데이터 (필터링용)
+    university = Column(String(100), nullable=False, index=True)  # 대학교 (예: 가천대학교)
+    admission_type = Column(String(100), nullable=False, index=True)  # 전형 (예: 학생부종합-가천바람개비)
+    department = Column(String(100), nullable=False, index=True)  # 학과 (예: 컴퓨터공학과)
+    category = Column(String(50), nullable=False, index=True)  # 카테고리 (예: 동아리, 세특, 진로 등)
+
+    # 2. 질문 데이터
+    question = Column(Text, nullable=False)  # 실제 면접 질문
+    search_context = Column(Text, nullable=False)  # 벡터화 대상 (키워드 + 질문 의도 요약)
+
+    # 3. 벡터 데이터 (text-embedding-004: 768차원)
+    embedding = Column(Vector(768), nullable=False)
+
+    # 4. 메타데이터
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    source_file = Column(String(255))  # 출처 (예: 2025_대입_면접후기_자료집.pdf)
