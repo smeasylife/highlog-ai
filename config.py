@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     google_api_key: str
     google_application_credentials: str = ""
 
+    # LLM 설정
+    llm_provider: str = "gemini"  # gemini, openai
+    llm_model: str = "gemini-2.5-flash"
+    openai_api_key: str = ""  # OpenAI 사용 시 필요
+
     # LangGraph (선택사항)
     langchain_tracing_v2: bool = False
     langchain_api_key: str = ""
@@ -42,6 +47,7 @@ class Settings(BaseSettings):
         case_sensitive = False
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # .env 파일의 추가 변수 무시
 
     @property
     def cors_origins_list(self) -> List[str]:

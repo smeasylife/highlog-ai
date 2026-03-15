@@ -30,46 +30,27 @@ def create_test_user():
             print(f"   이름: {existing_user.name}")
             print()
 
-            overwrite = input("기존 유저를 삭제하고 새로 생성하시겠습니까? (yes/no): ").strip().lower()
-
-            if overwrite not in ['yes', 'y']:
-                print("❌ 취소되었습니다.")
-                sys.exit(0)
-
             # 기존 유저 삭제
             db.delete(existing_user)
             db.commit()
             print("✅ 기존 유저가 삭제되었습니다.")
             print()
 
-        # 기본 정보
+        # 기본 정보 (하드코딩)
         email = "test@example.com"
         password = "test1234"
         name = "테스트유저"
+        role = 'USER'
+        marketing_agreement = False
 
-        # 커스텀 정보 입력 옵션
-        print("📋 기본 테스트 유저 정보:")
+        # 생성될 정보 출력
+        print("📋 생성할 테스트 유저 정보:")
         print(f"   이메일: {email}")
         print(f"   비밀번호: {password}")
         print(f"   이름: {name}")
-        print(f"   역할: USER")
-        print(f"   마케팅 동의: False")
+        print(f"   역할: {role}")
+        print(f"   마케팅 동의: {marketing_agreement}")
         print()
-
-        custom = input("커스텀 정보를 입력하시겠습니까? (yes/no): ").strip().lower()
-
-        if custom in ['yes', 'y']:
-            email = input("이메일 (기본값: test@example.com): ").strip() or email
-            password = input("비밀번호 (기본값: test1234): ").strip() or password
-            name = input("이름 (기본값: 테스트유저): ").strip() or name
-            role_input = input("역할 (USER/ADMIN, 기본값: USER): ").strip().upper()
-            role = role_input if role_input in ['USER', 'ADMIN'] else 'USER'
-
-            marketing_input = input("마케팅 동의 (true/false, 기본값: false): ").strip().lower()
-            marketing_agreement = marketing_input == 'true'
-        else:
-            role = 'USER'
-            marketing_agreement = False
 
         print()
         print("🔨 유저 생성 중...")

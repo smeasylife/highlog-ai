@@ -3,13 +3,20 @@
 Usage:
     python scripts/import_interview_questions.py
 """
-import json
-import asyncio
-import logging
+import sys
+import os
 from pathlib import Path
+
+# 프로젝트 루트를 Python path에 추가
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+import json
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from google import genai
+from google.genai import types
 from config import settings
 from app.models import InterviewData
 from app.database import Base
@@ -19,18 +26,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-async def generate_embedding(text: str, client: genai.Client) -> list[float]:
-    """텍스트 임베딩 생성 (Google text-embedding-004: 768차원)"""
+def generate_embedding(text: str, client: genai.Client, types) -> list[float]:
+    """텍스트 임베딩 생성 (gemini-embedding-001: 768차원)"""
     try:
         result = client.models.embed_content(
-            model="models/text-embedding-004",
-            content=text,
-            config=genai.EmbedContentConfig(
-                task_type="RETRIEVAL_DOCUMENT",
+            model="gemini-embedding-001",
+            contents=text,
+            config=types.EmbedContentConfig(
                 output_dimensionality=768
             )
         )
-        return result.embedding.values
+        return result.embeddings[0].values
     except Exception as e:
         logger.error(f"Error generating embedding for text: {text[:50]}... - {e}")
         raise
@@ -54,7 +60,7 @@ def clean_data(data: dict) -> dict:
     return data
 
 
-async def import_interview_questions(json_file_path: str):
+def import_interview_questions(json_file_path: str):
     """면접 질문 JSON 파일을 DB로 가져오기"""
     # 데이터베이스 세션 설정
     from app.database import get_db
@@ -63,6 +69,9 @@ async def import_interview_questions(json_file_path: str):
     try:
         # Google GenAI 클라이언트 초기화
         client = genai.Client(api_key=settings.google_api_key)
+
+        # types 참조 저장
+        types_module = types
 
         # JSON 파일 로드
         logger.info(f"Loading interview questions from {json_file_path}")
@@ -76,14 +85,9 @@ async def import_interview_questions(json_file_path: str):
         logger.info(f"Existing interview questions in DB: {existing_count}")
 
         if existing_count > 0:
-            response = input(f"DB already has {existing_count} questions. Clear and re-import? (y/N): ")
-            if response.lower() == 'y':
-                logger.info("Clearing existing interview data...")
-                db.query(InterviewData).delete()
-                db.commit()
-            else:
-                logger.info("Import cancelled.")
-                return
+            logger.info(f"DB already has {existing_count} questions. Clearing and re-importing...")
+            db.query(InterviewData).delete()
+            db.commit()
 
         # 질문 데이터 가져오기
         success_count = 0
@@ -96,7 +100,7 @@ async def import_interview_questions(json_file_path: str):
                 cleaned = clean_data(question_data.copy())
 
                 # 임베딩 생성 (search_context 사용)
-                embedding = await generate_embedding(cleaned["search_context"], client)
+                embedding = generate_embedding(cleaned["search_context"], client, types_module)
 
                 # InterviewData 레코드 생성
                 # JSON의 university 필드를 그대로 사용
@@ -158,5 +162,5 @@ if __name__ == "__main__":
         logger.error(f"File not found: {json_path}")
         sys.exit(1)
 
-    # 비동기 실행
-    asyncio.run(import_interview_questions(str(json_path)))
+    # 실행
+    import_interview_questions(str(json_path))

@@ -1,12 +1,9 @@
 """실시간 면접 API 엔드포인트
 
-간소화된 API 구조:
-- POST /initialize: 면접 초기화 (첫 답변 처리)
-- POST /chat/text/{thread_id}: 텍스트 기반 면접 (비스트리밍)
-- POST /chat/text/{thread_id}/stream: 텍스트 기반 면접 (SSE 스트리밍)
-- POST /chat/audio/{thread_id}: 오디오 기반 면접
-
-상태 저장은 LangGraph의 Checkpointer가 자동으로 처리합니다.
+간소화된 API 구조 (LangGraph 제거):
+- POST /initialize/text: 면접 초기화 (첫 답변 처리)
+- POST /chat/text/{session_id}: 텍스트 기반 면접 (SSE 스트리밍)
+- POST /chat/audio/{session_id}: 오디오 기반 면접
 """
 import logging
 import io
@@ -21,10 +18,9 @@ from app.schemas import (
     SimpleChatRequest,
     InterviewChatResponse,
     AudioInterviewResponse,
-    InitializeInterviewResponse,
     InitializeAudioInterviewResponse
 )
-from app.graphs.interview_graph import interview_graph
+from app.services.interview_service import interview_service
 from app.core.dependencies import get_current_user, CurrentUser
 
 logger = logging.getLogger(__name__)
@@ -42,8 +38,7 @@ async def initialize_interview_text(
     """
     텍스트 기반 면접 초기화 (SSE 스트리밍)
 
-    첫 질문은 항상 "자기소개 부탁드립니다."로 고정입니다.
-    클라이언트가 이 질문을 보여주고, 사용자의 첫 답변(텍스트)을 받아서 서버로 전송합니다.
+    첫 답변(자기소개)을 받아서 분석하고, 다음 질문을 생성합니다.
 
     Args:
         request: 초기화 요청
@@ -53,62 +48,50 @@ async def initialize_interview_text(
             - response_time: 첫 답변 소요 시간 (초)
 
     Returns:
-        SSE 스트림: thread_id와 다음 질문을 토큰 단위로 실시간 전송
+        SSE 스트림: session_id와 다음 질문을 토큰 단위로 실시간 전송
     """
     try:
         logger.info(f"Initializing text interview for record {request.record_id}")
 
-        # 고유 thread_id 생성 (user_id 포함하여 추적 가능하게)
-        thread_id = f"interview_{current_user.user_id}_{request.record_id}_{uuid.uuid4().hex[:8]}"
-        logger.info(f"Generated thread_id: {thread_id}")
+        # 1. 세션 생성
+        session = interview_service.create_session(
+            user_id=current_user.user_id,
+            record_id=request.record_id,
+            difficulty=request.difficulty,
+            target_university=request.target_university,
+            target_department=request.target_department,
+            mode="TEXT"
+        )
+
+        session_id = session.id
+        logger.info(f"Created interview session: {session_id}")
 
         async def generate():
-            """SSE 스트리밍 생성器"""
+            """SSE 스트리밍 생성기"""
             try:
-                # 1. 초기 상태 생성
-                initial_state = await interview_graph.initialize_interview_state(
-                    user_id=current_user.user_id,
-                    record_id=request.record_id,
-                    difficulty=request.difficulty,
-                    target_university=request.target_university,
-                    target_department=request.target_department,
-                    first_answer=request.first_answer,
-                    response_time=request.response_time,
-                    thread_id=thread_id,
-                    mode="TEXT"
-                )
+                # 1. session_id 먼저 전송
+                yield f"data: {json.dumps({'session_id': session_id}, ensure_ascii=False)}\n\n"
 
-                # 2. thread_id 먼저 전송
-                yield f"data: {json.dumps({'thread_id': thread_id}, ensure_ascii=False)}\n\n"
+                # 2. 답변 분석
+                # 초기 상태 설정 (첫 답변이므로 INTRO 단계)
+                action = "new_topic"  # 첫 답변 후에는 무조건 새 주제
 
-                # 3. LangGraph astream_events로 스트리밍
-                config = {"configurable": {"thread_id": thread_id}}
-                graph = interview_graph.get_graph()
+                # 3. 남은 주제 선택
+                from app.services.interview_service import SUB_TOPICS
+                remaining_topics = [t for t in SUB_TOPICS if t not in []]
+                import random
+                new_topic = random.choice(remaining_topics)
 
-                async for event in graph.astream_events(initial_state, config=config, version="v2"):
-                    kind = event["event"]
+                # 4. 다음 질문 생성 (토큰 스트리밍)
+                async for token in interview_service.generate_new_topic_question(
+                    session_id=session_id,
+                    new_topic=new_topic,
+                    target_department=request.target_department
+                ):
+                    yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
 
-                    # LLM 토큰 스트리밍
-                    if kind == "on_chat_model_stream":
-                        content = event["data"]["chunk"].content
-                        if content:
-                            # content가 리스트인 경우 처리 (Gemini는 텍스트 단일 반환)
-                            if isinstance(content, list):
-                                for item in content:
-                                    if hasattr(item, 'text'):
-                                        yield f"data: {json.dumps({'token': item.text}, ensure_ascii=False)}\n\n"
-                            else:
-                                yield f"data: {json.dumps({'token': content}, ensure_ascii=False)}\n\n"
-
-                    # 노드 시작 (디버깅용)
-                    elif kind == "on_chain_start":
-                        node_name = event.get("name", "")
-                        if node_name and node_name not in ["LangGraph"]:
-                            yield f"data: {json.dumps({'status': f'{node_name} 작업 시작...'}, ensure_ascii=False)}\n\n"
-
-                    # 그래프 완료
-                    elif kind == "on_chain_end" and event.get("name") == "LangGraph":
-                        yield f"data: [DONE]\n\n"
+                # 6. 완료 신호
+                yield f"data: [DONE]\n\n"
 
             except Exception as e:
                 logger.error(f"Error in initialization stream: {e}")
@@ -225,9 +208,9 @@ async def initialize_interview_audio(
 
 # ==================== 텍스트 기반 면접 ====================
 
-@router.post("/chat/text/{thread_id}")
+@router.post("/chat/text/{session_id}")
 async def chat_text(
-    thread_id: str,
+    session_id: int,
     request: SimpleChatRequest,
     current_user: CurrentUser = Depends(get_current_user)
 ):
@@ -237,7 +220,7 @@ async def chat_text(
     ChatGPT처럼 질문이 토큰 단위로 스트리밍됩니다.
 
     Args:
-        thread_id: LangGraph thread ID (URL 경로 파라미터)
+        session_id: 면접 세션 ID (URL 경로 파라미터)
         request: 간소화된 채팅 요청 (JSON body)
             - answer: 사용자 답변
             - response_time: 답변 소요 시간 (초)
@@ -246,56 +229,83 @@ async def chat_text(
         SSE 스트림: 질문 텍스트를 토큰 단위로 실시간 전송
     """
     try:
-        logger.info(f"Text chat request for thread_id: {thread_id}")
+        logger.info(f"Text chat request for session_id: {session_id}")
 
-        # thread_id에서 user_id 추출하여 권한 확인
-        parts = thread_id.split('_')
-        if len(parts) < 2 or parts[1] != str(current_user.user_id):
+        # 1. 세션 조회 및 권한 확인
+        session = interview_service.get_session(session_id)
+        if not session or session.user_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="Access denied to this interview")
 
         async def generate():
             """SSE 스트리밍 생성기"""
             try:
-                # 1. 현재 상태 조회
-                current_state = interview_graph.get_state(thread_id)
+                # 2. 답변 분석
+                action = await interview_service.analyze_answer(
+                    session_id=session_id,
+                    answer=request.answer,
+                    response_time=request.response_time,
+                    last_question=session.last_question or "",
+                    remaining_time=session.remaining_time,
+                    asked_sub_topics=session.asked_sub_topics or [],
+                    follow_up_count=session.follow_up_count or 0
+                )
 
-                # 2. 답변 정보 설정
-                current_state['last_answer'] = request.answer
-                current_state['last_response_time'] = request.response_time
+                # 3. 액션에 따라 질문 생성
+                if action == "follow_up":
+                    # 꼬리 질문 (토큰 스트리밍)
+                    async for token in interview_service.generate_follow_up_question(
+                        session_id=session_id,
+                        last_answer=request.answer,
+                        current_sub_topic=session.current_sub_topic or "",
+                        follow_up_count=session.follow_up_count or 0,
+                        target_department=session.target_department
+                    ):
+                        yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
 
-                # 3. LangGraph astream_events로 스트리밍
-                config = {"configurable": {"thread_id": thread_id}}
-                graph = interview_graph.get_graph()
+                    # 세션 업데이트
+                    interview_service.update_session_state(
+                        session_id=session_id,
+                        follow_up_count=(session.follow_up_count or 0) + 1
+                    )
 
-                async for event in graph.astream_events(current_state, config=config, version="v2"):
-                    kind = event["event"]
-
-                    # LLM 토큰 스트리밍
-                    if kind == "on_chat_model_stream":
-                        content = event["data"]["chunk"].content
-                        if content:
-                            # content가 리스트인 경우 처리 (Gemini는 텍스트 단일 반환)
-                            if isinstance(content, list):
-                                for item in content:
-                                    if hasattr(item, 'text'):
-                                        yield f"data: {json.dumps({'token': item.text}, ensure_ascii=False)}\n\n"
-                            else:
-                                yield f"data: {json.dumps({'token': content}, ensure_ascii=False)}\n\n"
-
-                    # 노드 시작 (디버깅용)
-                    elif kind == "on_chain_start":
-                        node_name = event.get("name", "")
-                        if node_name and node_name not in ["LangGraph"]:
-                            yield f"data: {json.dumps({'status': f'{node_name} 작업 시작...'}, ensure_ascii=False)}\n\n"
-
-                    # wrap_up 노드 종료 시 종료 메시지
-                    elif kind == "on_chain_end" and event.get("name") == "wrap_up":
+                elif action == "new_topic":
+                    # 새로운 주제 선택
+                    from app.services.interview_service import SUB_TOPICS
+                    remaining_topics = [t for t in SUB_TOPICS if t not in (session.asked_sub_topics or [])]
+                    if not remaining_topics:
+                        # 종료
                         closing_message = "면접을 종료합니다. 수고하셨습니다."
                         yield f"data: {json.dumps({'token': closing_message, 'is_finished': True}, ensure_ascii=False)}\n\n"
+                        await interview_service.wrap_up_interview(session_id)
+                    else:
+                        import random
+                        new_topic = random.choice(remaining_topics)
 
-                    # 그래프 완료
-                    elif kind == "on_chain_end" and event.get("name") == "LangGraph":
-                        yield f"data: [DONE]\n\n"
+                        # 새 주제 질문 생성 (토큰 스트리밍)
+                        async for token in interview_service.generate_new_topic_question(
+                            session_id=session_id,
+                            new_topic=new_topic,
+                            target_department=session.target_department
+                        ):
+                            yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
+
+                        # 세션 업데이트
+                        asked_topics = session.asked_sub_topics or []
+                        asked_topics.append(new_topic)
+                        interview_service.update_session_state(
+                            session_id=session_id,
+                            asked_sub_topics=asked_topics,
+                            current_sub_topic=new_topic,
+                            follow_up_count=0
+                        )
+
+                elif action == "wrap_up":
+                    # 종료
+                    closing_message = await interview_service.wrap_up_interview(session_id)
+                    yield f"data: {json.dumps({'token': closing_message, 'is_finished': True}, ensure_ascii=False)}\n\n"
+
+                # 완료 신호
+                yield f"data: [DONE]\n\n"
 
             except Exception as e:
                 logger.error(f"Error in stream generation: {e}")

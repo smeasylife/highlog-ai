@@ -38,7 +38,7 @@ class VectorService:
         )
         self.types = types
         self.genai = genai
-        self.embedding_model = 'gemini-embedding-001'  # 768차원 embedding 모델
+        self.embedding_model = 'gemini-embedding-001'  # 768차원 embedding 모델 (최신)
         self.chat_model = 'gemini-2.5-flash'  # 청킹용 모델
     
     async def vectorize_pdf(

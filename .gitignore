@@ -21,6 +21,7 @@ htmlcov/
 logs/
 
 # Environment
+.env
 .env.local
 .env.*.local
 
