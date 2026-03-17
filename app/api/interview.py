@@ -1,26 +1,26 @@
 """실시간 면접 API 엔드포인트
 
-간소화된 API 구조 (LangGraph 제거):
-- POST /initialize/text: 면접 초기화 (첫 답변 처리)
-- POST /chat/text/{session_id}: 텍스트 기반 면접 (SSE 스트리밍)
-- POST /chat/audio/{session_id}: 오디오 기반 면접
+변경된 API 구조:
+- POST /api/interview/start: 면접 세션 시작 (session_id 반환)
+- POST /api/interview/chat/text/{session_id}: 텍스트 기반 면접 (SSE 스트리밍)
+- POST /api/interview/chat/audio/{session_id}: 오디오 기반 면접
 """
 import logging
 import io
-import uuid
 import json
 from typing import Dict, Any
+from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 
 from app.schemas import (
-    InitializeInterviewRequest,
+    StartInterviewRequest,
+    StartInterviewResponse,
     SimpleChatRequest,
-    InterviewChatResponse,
-    AudioInterviewResponse,
-    InitializeAudioInterviewResponse
+    AudioInterviewResponse
 )
-from app.services.interview_service import interview_service
+from app.services.interview_service import interview_service, SUB_TOPICS
+from app.services.audio_service import audio_service
 from app.core.dependencies import get_current_user, CurrentUser
 
 logger = logging.getLogger(__name__)
@@ -28,181 +28,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# ==================== 면접 초기화 ====================
+# ==================== 면접 세션 시작 ====================
 
-@router.post("/initialize/text")
-async def initialize_interview_text(
-    request: InitializeInterviewRequest,
+@router.post("/start", response_model=StartInterviewResponse)
+async def start_interview(
+    request: StartInterviewRequest,
     current_user: CurrentUser = Depends(get_current_user)
 ):
     """
-    텍스트 기반 면접 초기화 (SSE 스트리밍)
-
-    첫 답변(자기소개)을 받아서 분석하고, 다음 질문을 생성합니다.
+    면접 세션을 생성하고 고유 session_id를 반환합니다.
+    첫 질문("자기소개 부탁드립니다.")은 프론트엔드에서 고정 표시합니다.
 
     Args:
-        request: 초기화 요청
+        request: 세션 시작 요청
             - record_id: 생기부 ID
             - difficulty: 난이도 (Easy, Normal, Hard)
-            - first_answer: 첫 답변 (자기소개 텍스트)
-            - response_time: 첫 답변 소요 시간 (초)
+            - target_university: 지원 대학교
+            - target_department: 지원 학과
+            - mode: 면접 모드 (TEXT, AUDIO)
 
     Returns:
-        SSE 스트림: session_id와 다음 질문을 토큰 단위로 실시간 전송
+        session_id: 고유 세션 ID
     """
     try:
-        logger.info(f"Initializing text interview for record {request.record_id}")
+        logger.info(f"Starting {request.mode} interview for record {request.record_id}")
 
-        # 1. 세션 생성
+        # 세션 생성
         session = interview_service.create_session(
             user_id=current_user.user_id,
             record_id=request.record_id,
             difficulty=request.difficulty,
             target_university=request.target_university,
             target_department=request.target_department,
-            mode="TEXT"
+            mode=request.mode
         )
 
-        session_id = session.id
-        logger.info(f"Created interview session: {session_id}")
+        logger.info(f"Created interview session: {session.session_id}")
 
-        async def generate():
-            """SSE 스트리밍 생성기"""
-            try:
-                # 1. session_id 먼저 전송
-                yield f"data: {json.dumps({'session_id': session_id}, ensure_ascii=False)}\n\n"
-
-                # 2. 답변 분석
-                # 초기 상태 설정 (첫 답변이므로 INTRO 단계)
-                action = "new_topic"  # 첫 답변 후에는 무조건 새 주제
-
-                # 3. 남은 주제 선택
-                from app.services.interview_service import SUB_TOPICS
-                remaining_topics = [t for t in SUB_TOPICS if t not in []]
-                import random
-                new_topic = random.choice(remaining_topics)
-
-                # 4. 다음 질문 생성 (토큰 스트리밍)
-                async for token in interview_service.generate_new_topic_question(
-                    session_id=session_id,
-                    new_topic=new_topic,
-                    target_department=request.target_department
-                ):
-                    yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
-
-                # 6. 완료 신호
-                yield f"data: [DONE]\n\n"
-
-            except Exception as e:
-                logger.error(f"Error in initialization stream: {e}")
-                import traceback
-                logger.error(f"Full traceback:\n{traceback.format_exc()}")
-                yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
-
-        return StreamingResponse(
-            generate(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no"
-            }
-        )
+        return StartInterviewResponse(session_id=session.session_id)
 
     except Exception as e:
-        logger.error(f"Error in initialize_interview_text: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/initialize/audio", response_model=InitializeAudioInterviewResponse)
-async def initialize_interview_audio(
-    record_id: int = Form(...),
-    difficulty: str = Form(...),
-    target_university: str = Form(...),
-    target_department: str = Form(...),
-    audio: UploadFile = File(...),
-    response_time: int = Form(...),
-    current_user: CurrentUser = Depends(get_current_user)
-):
-    """
-    오디오 기반 면접 초기화
-
-    첫 질문은 항상 "자기소개 부탁드립니다."로 고정입니다.
-    클라이언트가 이 질문을 보여주고, 사용자의 첫 답변(음성)을 받아서 서버로 전송합니다.
-
-    Args:
-        record_id: 생기부 ID
-        difficulty: 난이도 (Easy, Normal, Hard)
-        target_university: 지원 대학교 (예: 가천대학교)
-        target_department: 지원 학과 (예: 컴퓨터공학과)
-        audio: 첫 답변 오디오 파일 (자기소개)
-        response_time: 첫 답변 소요 시간 (초)
-
-    Returns:
-        AudioInterviewResponse:
-            - next_question: 두 번째 질문
-            - is_finished: 종료 여부
-            - thread_id: 고유 thread ID (이후 요청에 사용)
-            - audio_url: 다음 질문의 TTS 음성 URL
-    """
-    try:
-        logger.info(f"Initializing audio interview for record {record_id}")
-
-        # 1. STT (Speech-to-Text) - 첫 답변을 텍스트로 변환
-        from app.services.audio_service import audio_service
-
-        audio_bytes = io.BytesIO(await audio.read())
-        first_answer_text = await audio_service.transcribe_audio(
-            audio_bytes=audio_bytes,
-            mime_type=audio.content_type
-        )
-
-        if not first_answer_text:
-            raise HTTPException(status_code=400, detail="Failed to transcribe first answer audio")
-
-        logger.info(f"Transcribed first answer: {first_answer_text[:100]}...")
-
-        # 2. 고유 thread_id 생성 (user_id 포함하여 추적 가능하게)
-        thread_id = f"interview_{current_user.user_id}_{record_id}_{uuid.uuid4().hex[:8]}"
-        logger.info(f"Generated thread_id: {thread_id}")
-
-        # 3. 초기 상태 생성 및 그래프 실행
-        initial_state = await interview_graph.initialize_interview_state(
-            user_id=current_user.user_id,
-            record_id=record_id,
-            difficulty=difficulty,
-            target_university=target_university,
-            target_department=target_department,
-            first_answer=first_answer_text,
-            response_time=response_time,
-            thread_id=thread_id,
-            mode="AUDIO"
-        )
-
-        config = {"configurable": {"thread_id": thread_id}}
-        graph = interview_graph.get_graph()
-
-        final_state = await graph.ainvoke(initial_state, config=config)
-        next_question = final_state.get('last_question', '')
-
-        # 4. TTS (Text-to-Speech) - 다음 질문을 음성으로 변환
-        audio_url = None
-        if next_question:
-            audio_url = await audio_service.text_to_speech(
-                text=next_question,
-                language_code="ko-KR"
-            )
-            logger.info(f"TTS audio URL generated: {audio_url}")
-
-        # 5. 결과 반환
-        return InitializeAudioInterviewResponse(
-            next_question=next_question,
-            audio_url=audio_url,
-            thread_id=thread_id
-        )
-
-    except Exception as e:
-        logger.error(f"Error in initialize_interview_audio: {e}")
+        logger.error(f"Error starting interview: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -210,7 +76,7 @@ async def initialize_interview_audio(
 
 @router.post("/chat/text/{session_id}")
 async def chat_text(
-    session_id: int,
+    session_id: str,
     request: SimpleChatRequest,
     current_user: CurrentUser = Depends(get_current_user)
 ):
@@ -226,7 +92,7 @@ async def chat_text(
             - response_time: 답변 소요 시간 (초)
 
     Returns:
-        SSE 스트림: 질문 텍스트를 토큰 단위로 실시간 전송
+        SSE 스트림: status 필드를 포함한 토큰 단위 실시간 전송
     """
     try:
         logger.info(f"Text chat request for session_id: {session_id}")
@@ -236,82 +102,166 @@ async def chat_text(
         if not session or session.user_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="Access denied to this interview")
 
+        # 2. 메모리에서 State 관리
+        current_sub_topic = session.current_sub_topic or ""
+        asked_sub_topics = session.asked_sub_topics or []
+        follow_up_count = session.follow_up_count or 0
+        remaining_time = session.remaining_time or 600
+        logs = session.interview_logs or []
+
+        # 이전 질문 가져오기 (interview_logs에서 마지막 질문)
+        last_question = ""
+        if logs and len(logs) > 0:
+            last_question = logs[-1].get("question", "")
+
         async def generate():
-            """SSE 스트리밍 생성기"""
+            nonlocal current_sub_topic, asked_sub_topics, follow_up_count, remaining_time, logs
+
             try:
-                # 2. 답변 분석
+                # 남은 시간 먼저 차감
+                remaining_time -= request.response_time
+
+                # 3. 답변 분석
                 action = await interview_service.analyze_answer(
                     session_id=session_id,
                     answer=request.answer,
                     response_time=request.response_time,
-                    last_question=session.last_question or "",
-                    remaining_time=session.remaining_time,
-                    asked_sub_topics=session.asked_sub_topics or [],
-                    follow_up_count=session.follow_up_count or 0
+                    last_question=last_question,
+                    remaining_time=remaining_time,
+                    asked_sub_topics=asked_sub_topics,
+                    follow_up_count=follow_up_count
                 )
 
-                # 3. 액션에 따라 질문 생성
+                # 4. 액션에 따라 질문 생성
                 if action == "follow_up":
                     # 꼬리 질문 (토큰 스트리밍)
+                    question_buffer = []
                     async for token in interview_service.generate_follow_up_question(
                         session_id=session_id,
                         last_answer=request.answer,
-                        current_sub_topic=session.current_sub_topic or "",
-                        follow_up_count=session.follow_up_count or 0,
+                        current_sub_topic=current_sub_topic,
+                        follow_up_count=follow_up_count,
                         target_department=session.target_department
                     ):
-                        yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
+                        question_buffer.append(token)
+                        yield f"data: {json.dumps({'status': 'generating', 'token': token}, ensure_ascii=False)}\n\n"
 
-                    # 세션 업데이트
+                    # 질문 완료 메시지
+                    full_question = "".join(question_buffer)
+                    if not full_question.strip():
+                        full_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
+
+                    yield f"data: {json.dumps({'status': 'completed', 'question': full_question, 'sub_topic': current_sub_topic}, ensure_ascii=False)}\n\n"
+
+                    # 기존 마지막 로그의 답변 업데이트
+                    follow_up_count += 1
+                    logs[-1]["answer"] = request.answer
+                    logs[-1]["response_time"] = request.response_time
+
+                    # 새로운 질문 append
+                    logs.append({
+                        "question": full_question,
+                        "answer": "",
+                        "response_time": 0,
+                        "sub_topic": current_sub_topic
+                    })
+
+                    # 갱신된 상태를 DB에 저장
                     interview_service.update_session_state(
                         session_id=session_id,
-                        follow_up_count=(session.follow_up_count or 0) + 1
+                        asked_sub_topics=asked_sub_topics,
+                        current_sub_topic=current_sub_topic,
+                        follow_up_count=follow_up_count,
+                        remaining_time=max(0, remaining_time),
+                        interview_logs=logs
                     )
 
                 elif action == "new_topic":
                     # 새로운 주제 선택
-                    from app.services.interview_service import SUB_TOPICS
-                    remaining_topics = [t for t in SUB_TOPICS if t not in (session.asked_sub_topics or [])]
+                    remaining_topics = [t for t in SUB_TOPICS if t not in asked_sub_topics]
+
                     if not remaining_topics:
                         # 종료
                         closing_message = "면접을 종료합니다. 수고하셨습니다."
-                        yield f"data: {json.dumps({'token': closing_message, 'is_finished': True}, ensure_ascii=False)}\n\n"
-                        await interview_service.wrap_up_interview(session_id)
+                        yield f"data: {json.dumps({'status': 'finished', 'report': {'message': closing_message}}, ensure_ascii=False)}\n\n"
+
+                        # 마지막에 DB 반영
+                        interview_service.update_session_state(
+                            session_id=session_id,
+                            asked_sub_topics=asked_sub_topics,
+                            current_sub_topic=current_sub_topic,
+                            follow_up_count=follow_up_count,
+                            remaining_time=max(0, remaining_time),
+                            interview_logs,
+                            status="COMPLETED"
+                        )
                     else:
                         import random
                         new_topic = random.choice(remaining_topics)
 
                         # 새 주제 질문 생성 (토큰 스트리밍)
+                        question_buffer = []
                         async for token in interview_service.generate_new_topic_question(
                             session_id=session_id,
                             new_topic=new_topic,
                             target_department=session.target_department
                         ):
-                            yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
+                            question_buffer.append(token)
+                            yield f"data: {json.dumps({'status': 'generating', 'token': token}, ensure_ascii=False)}\n\n"
 
-                        # 세션 업데이트
-                        asked_topics = session.asked_sub_topics or []
-                        asked_topics.append(new_topic)
+                        # 질문 완료 메시지
+                        full_question = "".join(question_buffer)
+                        if not full_question.strip():
+                            full_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
+
+                        yield f"data: {json.dumps({'status': 'completed', 'question': full_question, 'sub_topic': new_topic}, ensure_ascii=False)}\n\n"
+
+                        # 기존 마지막 로그의 답변 업데이트
+                        asked_sub_topics.append(current_sub_topic)
+                        current_sub_topic = new_topic
+                        follow_up_count = 0
+                        logs[-1]["answer"] = request.answer
+                        logs[-1]["response_time"] = request.response_time
+
+                        # 새로운 질문 append
+                        logs.append({
+                            "question": full_question,
+                            "answer": "",
+                            "response_time": 0,
+                            "sub_topic": new_topic
+                        })
+
+                        # 갱신된 상태를 DB에 저장
                         interview_service.update_session_state(
                             session_id=session_id,
-                            asked_sub_topics=asked_topics,
-                            current_sub_topic=new_topic,
-                            follow_up_count=0
+                            asked_sub_topics=asked_sub_topics,
+                            current_sub_topic=current_sub_topic,
+                            follow_up_count=follow_up_count,
+                            remaining_time=max(0, remaining_time),
+                            interview_logs=logs
                         )
 
                 elif action == "wrap_up":
                     # 종료
-                    closing_message = await interview_service.wrap_up_interview(session_id)
-                    yield f"data: {json.dumps({'token': closing_message, 'is_finished': True}, ensure_ascii=False)}\n\n"
+                    closing_message = "면접을 종료합니다. 수고하셨습니다."
+                    yield f"data: {json.dumps({'status': 'finished', 'report': {'message': closing_message}}, ensure_ascii=False)}\n\n"
 
-                # 완료 신호
-                yield f"data: [DONE]\n\n"
+                    # 마지막에 DB 반영
+                    interview_service.update_session_state(
+                        session_id=session_id,
+                        asked_sub_topics=asked_sub_topics,
+                        current_sub_topic=current_sub_topic,
+                        follow_up_count=follow_up_count,
+                        remaining_time=max(0, remaining_time),
+                        interview_logs=logs,
+                        status="COMPLETED"
+                    )
 
             except Exception as e:
                 logger.error(f"Error in stream generation: {e}")
                 import traceback
                 logger.error(f"Full traceback:\n{traceback.format_exc()}")
-                yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'status': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(
             generate(),
@@ -332,9 +282,9 @@ async def chat_text(
 
 # ==================== 오디오 기반 면접 ====================
 
-@router.post("/chat/audio/{thread_id}")
+@router.post("/chat/audio/{session_id}")
 async def chat_audio(
-    thread_id: str,
+    session_id: str,
     audio: UploadFile = File(...),
     response_time: int = Form(...),
     current_user: CurrentUser = Depends(get_current_user)
@@ -343,7 +293,7 @@ async def chat_audio(
     오디오 기반 실시간 면접
 
     Args:
-        thread_id: LangGraph thread ID (URL 경로 파라미터)
+        session_id: 면접 세션 ID (URL 경로 파라미터)
         audio: 오디오 파일
         response_time: 답변 소요 시간 (초)
 
@@ -351,52 +301,208 @@ async def chat_audio(
         AudioInterviewResponse: 다음 질문, 음성 URL
     """
     try:
-        logger.info(f"Audio chat request for thread_id: {thread_id}")
+        logger.info(f"Audio chat request for session_id: {session_id}")
 
-        # thread_id에서 user_id 추출하여 권한 확인
-        parts = thread_id.split('_')
-        if len(parts) < 2 or parts[1] != str(current_user.user_id):
+        # 1. 세션 조회 및 권한 확인
+        session = interview_service.get_session(session_id)
+        if not session or session.user_id != current_user.user_id:
             raise HTTPException(status_code=403, detail="Access denied to this interview")
 
-        # 1. STT (Speech-to-Text)
-        from app.services.audio_service import audio_service
+        # 2. 메모리에서 State 관리
+        current_sub_topic = session.current_sub_topic or ""
+        asked_sub_topics = session.asked_sub_topics or []
+        follow_up_count = session.follow_up_count or 0
+        remaining_time = session.remaining_time or 600
+        logs = session.interview_logs or []
 
+        # 3. STT (Speech-to-Text)
         audio_bytes = io.BytesIO(await audio.read())
-        text = await audio_service.transcribe_audio(
+        transcript = await audio_service.transcribe_audio(
             audio_bytes=audio_bytes,
             mime_type=audio.content_type
         )
 
-        if not text:
+        if not transcript:
             raise HTTPException(status_code=400, detail="Failed to transcribe audio")
 
-        logger.info(f"Transcribed text: {text[:100]}...")
+        logger.info(f"Transcribed text: {transcript[:100]}...")
 
-        # 2. LangGraph invoke로 상태 처리
-        current_state = interview_graph.get_state(thread_id)
-        current_state['last_answer'] = text
-        current_state['last_response_time'] = response_time
+        # interview_logs에서 가장 최근 질문 가져오기
+        last_question = logs[-1].get("question", "") if logs else ""
 
-        config = {"configurable": {"thread_id": thread_id}}
-        graph = interview_graph.get_graph()
+        # 남은 시간 먼저 차감
+        remaining_time -= response_time
 
-        final_state = await graph.ainvoke(current_state, config=config)
-        next_question = final_state.get('last_question', '')
-
-        # 3. TTS (Text-to-Speech) - 다음 질문을 음성으로 변환
-        audio_url = None
-        if next_question:
-            audio_url = await audio_service.text_to_speech(
-                text=next_question,
-                language_code="ko-KR"
-            )
-            logger.info(f"TTS audio URL generated: {audio_url}")
-
-        return AudioInterviewResponse(
-            next_question=next_question,
-            audio_url=audio_url
+        # 4. 답변 분석
+        action = await interview_service.analyze_answer(
+            session_id=session_id,
+            answer=transcript,
+            response_time=response_time,
+            last_question=last_question,
+            remaining_time=remaining_time,
+            asked_sub_topics=asked_sub_topics,
+            follow_up_count=follow_up_count
         )
 
+        # 5. 액션에 따라 질문 생성
+        next_question = ""
+        is_finished = False
+
+        if action == "follow_up":
+            # 꼬리 질문 생성
+            question_buffer = ""
+            async for token in interview_service.generate_follow_up_question(
+                session_id=session_id,
+                last_answer=transcript,
+                current_sub_topic=current_sub_topic,
+                follow_up_count=follow_up_count,
+                target_department=session.target_department or ""
+            ):
+                question_buffer += token
+            next_question = question_buffer
+
+            if not next_question.strip():
+                next_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
+
+            # 기존 마지막 로그의 답변 업데이트
+            follow_up_count += 1
+            logs[-1]["answer"] = transcript
+            logs[-1]["response_time"] = response_time
+
+            # 새로운 질문 append
+            logs.append({
+                "question": next_question,
+                "answer": "",
+                "response_time": 0,
+                "sub_topic": current_sub_topic
+            })
+
+            # 갱신된 상태를 DB에 저장
+            interview_service.update_session_state(
+                session_id=session_id,
+                asked_sub_topics=asked_sub_topics,
+                current_sub_topic=current_sub_topic,
+                follow_up_count=follow_up_count,
+                remaining_time=max(0, remaining_time),
+                interview_logs=logs
+            )
+
+        elif action == "new_topic":
+            # 새로운 주제 선택
+            remaining_topics = [t for t in SUB_TOPICS if t not in asked_sub_topics]
+
+            if not remaining_topics:
+                # 종료
+                closing_message = "면접을 종료합니다. 수고하셨습니다."
+
+                # 마지막에 DB 반영
+                interview_service.update_session_state(
+                    session_id=session_id,
+                    asked_sub_topics=asked_sub_topics,
+                    current_sub_topic=current_sub_topic,
+                    follow_up_count=follow_up_count,
+                    remaining_time=max(0, remaining_time),
+                    interview_logs=logs,
+                    status="COMPLETED"
+                )
+
+                return AudioInterviewResponse(
+                    transcript=transcript,
+                    next_question=closing_message,
+                    sub_topic=None,
+                    remaining_time=0,
+                    is_finished=True
+                )
+
+            import random
+            new_topic = random.choice(remaining_topics)
+
+            # 새 주제 질문 생성
+            question_buffer = ""
+            async for token in interview_service.generate_new_topic_question(
+                session_id=session_id,
+                new_topic=new_topic,
+                target_department=session.target_department or ""
+            ):
+                question_buffer += token
+            next_question = question_buffer
+
+            if not next_question.strip():
+                next_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
+
+            # 기존 마지막 로그의 답변 업데이트
+            asked_sub_topics.append(current_sub_topic)
+            current_sub_topic = new_topic
+            follow_up_count = 0
+            logs[-1]["answer"] = transcript
+            logs[-1]["response_time"] = response_time
+
+            # 새로운 질문 append
+            logs.append({
+                "question": next_question,
+                "answer": "",
+                "response_time": 0,
+                "sub_topic": new_topic
+            })
+
+            # 갱신된 상태를 DB에 저장
+            interview_service.update_session_state(
+                session_id=session_id,
+                asked_sub_topics=asked_sub_topics,
+                current_sub_topic=current_sub_topic,
+                follow_up_count=follow_up_count,
+                remaining_time=max(0, remaining_time),
+                interview_logs=logs
+            )
+
+        elif action == "wrap_up":
+            # 종료
+            closing_message = "면접을 종료합니다. 수고하셨습니다."
+
+            # 마지막에 DB 반영
+            interview_service.update_session_state(
+                session_id=session_id,
+                asked_sub_topics=asked_sub_topics,
+                current_sub_topic=current_sub_topic,
+                follow_up_count=follow_up_count,
+                remaining_time=max(0, remaining_time),
+                interview_logs=logs,
+                status="COMPLETED"
+            )
+
+            return AudioInterviewResponse(
+                transcript=transcript,
+                next_question=closing_message,
+                sub_topic=None,
+                remaining_time=0,
+                is_finished=True
+            )
+
+        # 7. TTS (Text-to-Speech)
+        audio_url = None
+        if next_question and not is_finished:
+            try:
+                audio_url = await audio_service.text_to_speech(
+                    text=next_question,
+                    language_code="ko-KR"
+                )
+                logger.info(f"TTS audio URL generated: {audio_url}")
+            except Exception as tts_error:
+                logger.error(f"TTS failed: {tts_error}")
+                audio_url = None
+
+        # 8. 결과 반환
+        return AudioInterviewResponse(
+            transcript=transcript,
+            next_question=next_question,
+            audio_url=audio_url,
+            sub_topic=current_sub_topic,
+            remaining_time=max(0, remaining_time),
+            is_finished=False
+        )
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in chat_audio: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -413,7 +519,7 @@ async def get_interview_history(
 
     Returns:
         List[Dict]:
-            - session_id: 세션 ID (thread_id)
+            - session_id: 세션 ID
             - question_count: 질문 갯수
             - avg_response_time: 평균 응답 시간 (초)
             - total_duration: 전체 소요 시간 (초)
@@ -422,9 +528,8 @@ async def get_interview_history(
             - record_title: 생기부 제목
     """
     try:
-        from app.models import InterviewSession, StudentRecord
+        from app.models import InterviewSession
         from app.database import get_db
-        from sqlalchemy.orm import joinedload
 
         db = next(get_db())
 
@@ -441,18 +546,17 @@ async def get_interview_history(
                 # 질문 갯수
                 question_count = len(interview_logs)
 
-                # 전체 소요 시간 (완료 시간 - 시작 시간 또는 전체 응답 시간 합계)
+                # 전체 소요 시간
                 total_duration = 0
                 if session.completed_at and session.started_at:
                     total_duration = int((session.completed_at - session.started_at).total_seconds())
                 else:
-                    # 완료 시간이 없으면 응답 시간 합계로 계산
                     total_duration = sum(log.get('response_time', 0) for log in interview_logs)
 
                 # sub_topic 리스트 (중복 제거)
                 sub_topics = list(set(
                     log.get('sub_topic', '') for log in interview_logs
-                    if log.get('sub_topic')  # 빈 문자열 제거
+                    if log.get('sub_topic')
                 ))
 
                 # StudentRecord에서 title 조회
@@ -461,7 +565,7 @@ async def get_interview_history(
                     record_title = session.record.title
 
                 history.append({
-                    "session_id": session.id,
+                    "session_id": session.session_id,
                     "question_count": question_count,
                     "avg_response_time": session.avg_response_time or 0,
                     "total_duration": total_duration,
@@ -484,30 +588,26 @@ async def get_interview_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ==================== 면접 기록 조회 ====================
+# ==================== 면접 로그 조회 ====================
 
 @router.get("/logs/{session_id}")
 async def get_interview_logs(
-    session_id: int,
+    session_id: str,
     current_user: CurrentUser = Depends(get_current_user)
 ):
     """
-    특정 면접의 대화 기록 반환 (InterviewSession에서 조회)
+    특정 면접의 대화 기록 반환
 
     Args:
-        session_id: 면접 세션 ID (InterviewSession.id)
+        session_id: 면접 세션 ID
 
     Returns:
         대화 기록:
-            - thread_id: 면접 식별자
+            - session_id: 면접 식별자
             - difficulty: 난이도
             - mode: 면접 방식 (TEXT, AUDIO)
             - started_at: 면접 시작 시간
             - logs: 질문/답변 로그 리스트
-                - question: 질문 내용
-                - answer: 답변 내용
-                - response_time: 답변 시간(초)
-                - sub_topic: 주제
     """
     try:
         from app.database import get_db
@@ -518,7 +618,7 @@ async def get_interview_logs(
         try:
             # InterviewSession 조회
             interview_session = db.query(InterviewSession).filter(
-                InterviewSession.id == session_id
+                InterviewSession.session_id == session_id
             ).first()
 
             if not interview_session:
@@ -530,7 +630,7 @@ async def get_interview_logs(
 
             # interview_logs 반환
             return {
-                "thread_id": interview_session.thread_id,
+                "session_id": interview_session.session_id,
                 "difficulty": interview_session.difficulty,
                 "mode": interview_session.mode,
                 "started_at": interview_session.started_at.isoformat() if interview_session.started_at else None,
@@ -551,31 +651,17 @@ async def get_interview_logs(
 
 @router.get("/analyze/{session_id}")
 async def analyze_interview_result(
-    session_id: int,
+    session_id: str,
     current_user: CurrentUser = Depends(get_current_user)
 ):
     """
     면접 결과 분석 및 종합 리포트 반환
 
     Args:
-        session_id: 면접 세션 ID (InterviewSession.id)
+        session_id: 면접 세션 ID
 
     Returns:
-        종합 분석 리포트:
-            - scores: 영역별 점수
-                - 전공적합성: 0~25점
-                - 인성: 0~25점
-                - 발전가능성: 0~25점
-                - 의사소통능력: 0~25점
-                - 총점: 0~100점
-            - strength_tags: 강점 태그 리스트 (예: 구체적 사례 제시, 논리적 구조)
-            - weakness_tags: 단점 태그 리스트 (예: 답변 시간이 느림, 근거 부족)
-            - detailed_analysis: 질문별 상세 분석 리스트
-                - question: 질문 내용
-                - response_time: 답변 시간(초)
-                - evaluation: 평가 (좋음/보통/나쁨)
-                - improvement_point: 개선 포인트
-                - supplement_needed: 보완 필요 사항
+        종합 분석 리포트
     """
     try:
         from app.database import get_db
@@ -586,7 +672,7 @@ async def analyze_interview_result(
         try:
             # InterviewSession 조회
             interview_session = db.query(InterviewSession).filter(
-                InterviewSession.id == session_id
+                InterviewSession.session_id == session_id
             ).first()
 
             if not interview_session:
@@ -596,18 +682,22 @@ async def analyze_interview_result(
             if interview_session.user_id != current_user.user_id:
                 raise HTTPException(status_code=403, detail="Access denied to this interview")
 
+            # TODO: 실제 분석 로직 구현 (현재는 더미 데이터)
+            return {
+                "scores": {
+                    "전공적합성": 20,
+                    "인성": 18,
+                    "발전가능성": 22,
+                    "의사소통능력": 19,
+                    "총점": 79
+                },
+                "strength_tags": ["구체적 사례 제시", "논리적 구조"],
+                "weakness_tags": ["답변 시간이 느림"],
+                "detailed_analysis": []
+            }
+
         finally:
             db.close()
-
-        # 분석 실행
-        result = interview_graph.analyze_interview_result(interview_session.thread_id)
-
-        if "error" in result:
-            raise HTTPException(status_code=404, detail=result.get("message"))
-
-        logger.info(f"Interview analysis complete for session_id: {session_id}")
-
-        return result
 
     except HTTPException:
         raise

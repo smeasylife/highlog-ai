@@ -130,14 +130,14 @@ CREATE TABLE questions (
 
 ### 6. interview_sessions (면접 세션)
 
-LangGraph 기반 실시간 면접 세션 정보를 저장합니다.
+실시간 면접 세션 정보와 State를 저장합니다.
 
 ```sql
 CREATE TABLE interview_sessions (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     record_id BIGINT NOT NULL,
-    thread_id VARCHAR(255) UNIQUE NOT NULL,
+    session_id VARCHAR(255) UNIQUE NOT NULL,
     difficulty VARCHAR(20) DEFAULT 'Normal',
     mode VARCHAR(20) DEFAULT 'TEXT',
     status VARCHAR(20) DEFAULT 'IN_PROGRESS',
@@ -146,8 +146,21 @@ CREATE TABLE interview_sessions (
     avg_response_time INTEGER,
     total_questions INTEGER DEFAULT 0,
     total_duration INTEGER,
+
+    -- 면접 설정
+    target_university VARCHAR(100),
+    target_department VARCHAR(100),
+
+    -- 면접 State (실시간 업데이트)
+    current_sub_topic VARCHAR(100),
+    asked_sub_topics JSON DEFAULT '[]',
+    follow_up_count INTEGER DEFAULT 0,
+    remaining_time INTEGER DEFAULT 600,
+
+    -- 대화 기록 및 결과
     interview_logs JSON,
     final_report JSON,
+
     CONSTRAINT fk_session_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_session_record FOREIGN KEY (record_id) REFERENCES student_records(id) ON DELETE CASCADE
 );
@@ -157,6 +170,12 @@ CREATE TABLE interview_sessions (
 - `IN_PROGRESS`: 면접 진행 중
 - `COMPLETED`: 면접 완료
 - `ABANDONED`: 면접 중단
+
+**State 필드:**
+- `current_sub_topic`: 현재 질문 중인 하위 주제 (예: 동아리, 리더십)
+- `asked_sub_topics`: 완료된 주제 리스트 JSON 배열 `["출결", "동아리"]`
+- `follow_up_count`: 현재 주제에서의 꼬리 질문 횟수
+- `remaining_time`: 남은 시간 (초 단위, 기본 600초 = 10분)
 
 **interview_logs 구조:**
 ```json

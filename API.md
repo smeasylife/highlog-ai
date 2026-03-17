@@ -2,7 +2,7 @@
 
 ## Overview
 
-Interview AI 서비스의 핵심 API 명세입니다. LangGraph 기반 실시간 면접 시스템으로 SSE(Server-Sent Events) 스트리밍을 지원합니다.
+Interview AI 서비스의 핵심 API 명세입니다. 실시간 면접 시스템으로 텍스트 기반은 SSE(Server-Sent Events) 스트리밍을, 오디오 기반은 JSON 응답을 지원합니다.
 
 ---
 
@@ -24,14 +24,19 @@ S3 업로드 완료 후 파일 경로와 메타데이터를 저장하고, PDF OC
 
 ```python
 # 진행 중
-data: {"type": "processing", "progress": 30}
+data: {"status": "processing", "progress": 30}
 
 # 완료
-data: {"type": "complete", "progress": 100}
+data: {"status": "completed", "progress": 100}
 
 # 에러
-data: {"type": "error", "progress": 0}
+data: {"status": "error", "message": "에러 메시지"}
 ```
+
+**Status 값:**
+- `processing`: 처리 진행 중
+- `completed`: 처리 완료
+- `error`: 에러 발생
 
 **Progress Stage:**
 - `10-30%`: PDF 이미지 변환 및 텍스트 추출 (PyMuPDF)
@@ -63,11 +68,11 @@ data: {"type": "error", "progress": 0}
 
 ## 3. 실시간 면접 (Real-time Interview)
 
-### 3-1. 텍스트 기반 면접 초기화
+### 3-1. 면접 세션 시작
 
-### POST /api/interview/initialize/text
+### POST /api/interview/start
 
-텍스트 기반 면접을 초기화합니다. 첫 질문은 항상 "자기소개 부탁드립니다."로 고정입니다.
+면접 세션을 생성하고 고유 session_id를 반환합니다. 첫 질문("자기소개 부탁드립니다.")은 프론트엔드에서 고정 표시합니다.
 
 **Request:**
 ```json
@@ -76,8 +81,7 @@ data: {"type": "error", "progress": 0}
   "difficulty": "Normal",
   "target_university": "가천대학교",
   "target_department": "컴퓨터공학과",
-  "first_answer": "안녕하세요, 컴퓨터공학과에 지원한 OOO입니다...",
-  "response_time": 45
+  "mode": "TEXT"
 }
 ```
 
@@ -86,41 +90,22 @@ data: {"type": "error", "progress": 0}
 - `difficulty`: 면접 난이도 (Easy, Normal, Hard)
 - `target_university`: 지원 대학교 (예: 가천대학교, 한양대학교)
 - `target_department`: 지원 학과 (예: 컴퓨터공학과)
-- `first_answer`: 첫 답변 (자기소개 텍스트)
-- `response_time`: 첫 답변 소요 시간 (초)
+- `mode`: 면접 모드 (TEXT, AUDIO)
 
-**Response:** `text/event-stream` (SSE 스트리밍)
-
-```python
-# 1. thread_id 먼저 전송
-data: {"thread_id": "interview_2_10_a1b2c3d4"}
-
-# 2. 노드 시작 이벤트
-data: {"status": "analyzer 작업 시작..."}
-
-# 3. LLM 토큰 스트리밍 (실시간 타이핑 효과)
-data: {"token": "구체적으로"}
-data: {"token": "어떤"}
-data: {"token": "동아리에서"}
-...
-
-# 4. 완료 신호
-data: [DONE]
+**Response:**
+```json
+{
+  "session_id": "int_2_10_a1b2c3d4"
+}
 ```
-
-**Event Types:**
-- `thread_id`: 고유 thread ID (첫 이벤트)
-- `token`: LLM 생성 토큰 (실시간)
-- `status`: 노드 시작 알림
-- `is_finished`: 종료 플래그 (wrap_up 시)
 
 ---
 
 ### 3-2. 텍스트 기반 면접 채팅
 
-### POST /api/interview/chat/text/{thread_id}
+### POST /api/interview/chat/text/{session_id}
 
-사용자의 텍스트 답변을 받아 LangGraph가 분석하고 다음 질문을 생성합니다. **LLM 토큰 단위로 실시간 스트리밍됩니다.**
+사용자의 텍스트 답변을 받아 AI가 분석하고 다음 질문을 생성합니다. **LLM 토큰 단위로 실시간 스트리밍됩니다.**
 
 **Request:**
 ```json
@@ -132,82 +117,75 @@ data: [DONE]
 
 **Response:** `text/event-stream` (SSE 스트리밍)
 
-```python
-# 1. 노드 시작
-data: {"status": "analyzer 작업 시작..."}
+**SSE 응답 규칙:** 모든 SSE 응답은 `status` 필드를 포함해야 합니다.
 
-# 2. LLM 토큰 스트리밍 (질문 생성)
-data: {"token": "구체적으로"}
-data: {"token": "어떤 방법으로"}
-data: {"token": "의견 차이를"}
+```python
+# 진행 중 - 토큰 스트리밍
+data: {"status": "generating", "token": "구체적으로"}
+data: {"status": "generating", "token": "어떤 방법으로"}
+data: {"status": "generating", "token": "의견 차이를"}
 ...
 
-# 3. 종료 시
-data: {"token": "면접을 종료합니다. 수고하셨습니다.", "is_finished": true}
-data: [DONE]
+# 질문 생성 완료
+data: {"status": "completed", "question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?", "sub_topic": "리더십"}
+
+# 면접 종료
+data: {"status": "finished", "report": {...}}
+
+# 에러 발생
+data: {"status": "error", "message": "질문 생성 중 오류가 발생했습니다."}
 ```
+
+**Status 값:**
+- `generating`: 질문 생성 진행 중 (토큰 스트리밍)
+- `completed`: 질문 생성 완료
+- `finished`: 면접 종료
+- `error`: 에러 발생
 
 ---
 
-### 3-3. 오디오 기반 면접 초기화
+### 3-3. 오디오 기반 면접 채팅
 
-### POST /api/interview/initialize/audio
+### POST /api/interview/chat/audio/{session_id}
 
-오디오 기반 면접을 초기화합니다.
+사용자의 음성 답변을 받아 STT → AI 처리 → TTS 과정을 거쳐 음성 질문을 반환합니다.
 
 **Request:** `multipart/form-data`
 ```
-record_id: 10
-difficulty: Normal
-target_university: 가천대학교
-target_department: 컴퓨터공학과
 audio: (audio file)
 response_time: 45
 ```
 
-**Request Fields:**
-- `record_id`: 생기부 ID
-- `difficulty`: 면접 난이도 (Easy, Normal, Hard)
-- `target_university`: 지원 대학교 (예: 가천대학교, 한양대학교)
-- `target_department`: 지원 학과 (예: 컴퓨터공학과)
-- `audio`: 첫 답변 오디오 파일 (자기소개)
-- `response_time`: 첫 답변 소요 시간 (초)
+**Response:** `application/json`
 
-**Response:**
 ```json
 {
-  "next_question": "구체적으로 어떤 동아리 활동을 했나요?",
+  "transcript": "동아리 부장으로서 팀원 간의 의견 차이를 조율했습니다.",
+  "next_question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?",
   "audio_url": "https://s3.../question_1.mp3",
-  "thread_id": "interview_2_10_a1b2c3d4"
+  "sub_topic": "리더십",
+  "remaining_time": 480,
+  "is_finished": false
+}
+```
+
+**면접 종료 시:**
+```json
+{
+  "transcript": "...",
+  "is_finished": true,
+  "report": {
+    "scores": {...},
+    "strength_tags": [...],
+    "weakness_tags": [...]
+  }
 }
 ```
 
 **Process:**
 1. **STT**: Gemini 2.5 Flash Native Audio → 텍스트 변환
-2. **Graph**: LangGraph 실행
-3. **TTS**: Google Cloud TTS → 음성 변환
-
----
-
-### 3-4. 오디오 기반 면접 채팅
-
-### POST /api/interview/chat/audio/{thread_id}
-
-사용자의 음성 답변을 받아 STT → LangGraph → TTS 과정을 거쳐 음성 질문을 반환합니다.
-
-**Request:** `multipart/form-data`
-```
-audio: (audio file)
-response_time: 45
-```
-
-**Response:**
-```json
-{
-  "next_question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?",
-  "audio_url": "https://s3.../question_2.mp3"
-}
-```
+2. **AI Processing**: 답변 분석 → 질문 생성
+3. **TTS**: Google Cloud TTS → 음성 변환 → S3 업로드
 
 ---
 
@@ -247,7 +225,7 @@ response_time: 45
 **Response:**
 ```json
 {
-  "thread_id": "interview_2_10_a1b2c3d4",
+  "session_id": "int_2_10_a1b2c3d4",
   "difficulty": "Normal",
   "mode": "TEXT",
   "started_at": "2026-03-15T12:00:00",
@@ -296,52 +274,41 @@ response_time: 45
 
 ---
 
-## 5. LangGraph 노드 구조
+## 5. AI Service 워크플로우
 
-### 노드 (Nodes)
-
-| 노드 | 역할 | LLM |
-|------|------|-----|
-| `analyzer` | 답변 분석 및 다음 액션 결정 | ✅ (JSON) |
-| `follow_up_llm` | 꼬리 질문 생성 | ✅ (Streaming) |
-| `new_question_llm` | 새 주제 첫 질문 생성 | ✅ (Streaming) |
-| `retrieve_new_topic` | 새 주제 검색 | ❌ |
-| `wrap_up` | 종료 | ❌ |
-
-### 워크플로우
+### 처리 로직
 
 ```
-     ┌─────────────┐
-     │   analyzer  │ ◄── Entry Point
-     └──────┬──────┘
-            │
-            ▼
-    ┌───────────────┐
-    │ decide_next   │ (Conditional Edge)
-    │   _action     │
-    └───┬───────┬───┘
-        │       │
-   follow_up  new_topic  wrap_up
-        │       │          │
-        ▼       ▼          ▼
-┌──────────────┐ ┌──────────────┐
-│follow_up_llm │ │retrieve_new  │
-└──────┬───────┘ │    _topic    │
-       │         └──────┬───────┘
-       │                │
-       │                ▼
-       │         ┌──────────────┐
-       │         │new_question  │
-       │         │    _llm      │
-       │         └──────┬───────┘
-       │                │
-       └────┬───────┬───┘
-            │       │
-            ▼       ▼       ▼
-         ┌────────────────┐
-         │      END       │
-         └────────────────┘
+사용자 답변 수신
+       ↓
+   [답변 분석]
+   - 충실도, 구체성 평가
+   - 주제 소진 여부 확인
+       ↓
+   [다음 액션 결정]
+   - follow_up: 꼬리 질문
+   - new_topic: 주제 전환
+   - wrap_up: 종료
+       ↓
+   [질문 생성 및 스트리밍]
+   - LLM 토큰 단위 SSE 전송
+       ↓
+   [State 업데이트 및 DB 저장]
+   - 각 답변마다 즉시 DB 커밋
+   - 중간 장애 대응
 ```
+
+### State 관리
+
+State는 **매 답변마다 DB에 즉시 저장**합니다:
+
+- `current_sub_topic`: 현재 주제
+- `asked_sub_topics`: 완료된 주제 리스트
+- `follow_up_count`: 꼬리 질문 횟수
+- `remaining_time`: 남은 시간
+- `interview_logs`: 대화 기록
+
+**각 답변 처리 후 즉시 DB 커밋하여 중간 장애 대응**
 
 ---
 

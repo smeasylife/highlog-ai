@@ -136,87 +136,172 @@ prompt = f"""
 
 ### 6.4 검색 타이밍
 
-- **new_question_llm 노드 실행 시**: 새로운 주제로 전환할 때마다 검색 수행
-- **follow_up_llm 노드 실행 시**: 꼬리 질문 생성 시에도 검색 수행
+- **새로운 주제 질문 생성 시**: 주제 전환 시마다 검색 수행
+- **꼬리 질문 생성 시**: 필요시 검색 수행 (선택적)
+- **질문 생성 시**: 모든 질문 생성 시 검색 수행 (기본)
 - **검색 대상**: `interview_data` 테이블의 전체 데이터 (메타데이터 필터링 없이 벡터 유사도만으로 검색)
 
 ---
 
 ## 7. AI Interviewer Technical Specification
 
-동일한 **LangGraph Logic**을 공유하되, 입출력 처리만 분리된 두 개의 엔드포인트를 운영함.
+SSE 스트리밍 기반 실시간 면접 시스템. 텍스트/오디오 두 가지 모드를 지원합니다.
 
 ### 7.1 Text-Based Interview
 
-- **Input**: 사용자의 텍스트 답변, 소요 시간, 현재 상태(State).
-- **Process**: LangGraph → `analyzer` → `generator` → Text Output.
-- **Output**: 다음 질문 텍스트, 업데이트된 상태(State), 실시간 분석 데이터.
+- **Input**: 사용자의 텍스트 답변, 소요 시간
+- **Process**:
+    1. DB에서 세션 State 로드
+    2. 답변 분석 (AI)
+    3. 다음 액션 결정 (꼬리 질문/주제 전환/종료)
+    4. 질문 생성 (SSE 스트리밍)
+    5. State DB 업데이트
+- **Output**: 다음 질문 텍스트 (SSE 실시간 토큰), 업데이트된 State
+    - **SSE 응답 규칙**: 모든 응답에 `status` 필드 포함 (`generating`/`completed`/`finished`/`error`)
+    - **에러 처리**: `status: "error"` 시 `message` 필드에 에러 메시지 포함
 
 ### 7.2 Audio-Based Interview
 
-- **Input**: 사용자의 음성 파일(Multipart/form-data), 소요 시간, 현재 상태(State).
+- **Input**: 사용자의 음성 파일(Multipart/form-data), 소요 시간
 - **Process**:
-    1. **STT**: Gemini 2.5 Flash Native Audio를 통해 음성 파일을 텍스트로 즉시 변환.
-    2. **Graph**: 변환된 텍스트로 동일한 LangGraph 로직 수행.
-    3. **TTS**: 생성된 질문 텍스트를 Google Cloud TTS를 통해 고음질 음성 파일로 변환.
-- **Output**: 다음 질문 음성 파일(URL), 질문 텍스트, 업데이트된 상태(State), 실시간 분석 데이터.
+    1. **STT**: Gemini 2.5 Flash Native Audio → 텍스트 변환
+    2. **AI Processing**: 텍스트 답변으로 동일한 로직 수행
+    3. **TTS**: 생성된 질문 텍스트 → Google Cloud TTS → 음성 파일
+    4. State DB 업데이트
+- **Output**: 다음 질문 음성 파일(URL), 질문 텍스트 (SSE 스트리밍)
 
 ### 7.3 Interview Flow
 
-- **Trigger**: 프론트엔드의 "자기소개 부탁드립니다" 멘트 후 사용자의 **첫 답변** 시 LangGraph 구동.
-- **UI/UX**: 실시간 챗봇 형태, 타이머 정보 및 답변 소요 시간 데이터 동기화.
+1. **세션 시작**: `POST /api/interview/start` → session_id 반환
+2. **첫 질문**: 프론트엔드에서 "자기소개 부탁드립니다." 고정 표시
+3. **답변 처리**: 사용자 답변 → 채팅 API → AI 분석 → 다음 질문 생성
+4. **State 관리**: 모든 State는 `interview_sessions` 테이블에 실시간 저장
+5. **면접 종료**: 10분 경과 또는 주제 소진 시 자동 종료
 
 ---
 
-## 8. State Definition
+## 8. State Management
+
+State는 **매 답변마다 DB에 저장**합니다. 각 답변 처리 후 즉시 DB에 현재 상태를 반영하여 중간 장애에 대비합니다.
+
+### 8.1 State Schema (interview_sessions 테이블)
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `session_id` | String | 고유 세션 ID |
+| `difficulty` | String | Easy, Normal, Hard |
+| `target_university` | String | 지원 대학교 |
+| `target_department` | String | 지원 학과 |
+| `current_sub_topic` | String | 현재 질문 중인 주제 |
+| `asked_sub_topics` | JSON | 완료된 주제 리스트 `["출결", "동아리"]` |
+| `follow_up_count` | Integer | 현재 주제에서의 꼬리 질문 횟수 |
+| `question_count` | Integer | 총 질문 수 |
+| `remaining_time` | Integer | 남은 시간 (초, 기본 600) |
+| `interview_logs` | JSON | 대화 기록 |
+| `status` | String | IN_PROGRESS, COMPLETED, ABANDONED |
+
+### 8.2 State Lifecycle
 
 ```python
-class InterviewState(TypedDict):
-    # 기본 설정
-    difficulty: str                    # Easy, Normal, Hard
-    remaining_time: int                # 초 단위
-    is_intro: bool                     # 첫 시작 여부
+# 1. 세션 생성 (DB에 저장)
+session = InterviewSession(
+    session_id="int_2_10_a1b2c3d4",
+    difficulty="Normal",
+    target_university="가천대학교",
+    target_department="컴퓨터공학과",
+    asked_sub_topics=[],
+    follow_up_count=0,
+    remaining_time=600,
+    interview_logs=[]
+)
+db.save(session)
 
-    # 지원 대학/학과 정보
-    target_university: str             # 지원 대학교 (예: 가천대학교)
-    target_department: str             # 지원 학과 (예: 컴퓨터공학과)
+# 2. 각 답변 처리 시 (즉시 DB 저장)
+follow_up_count += 1
+remaining_time -= response_time
+logs.append(new_log)
+db.commit()  # 매 답변마다 DB 저장
 
-    # 대화 컨텍스트
-    current_context: List[int]         # 학생부 청크 ID 리스트
-    current_sub_topic: str             # 현재 주제
-    asked_sub_topics: List[str]        # 완료된 주제 리스트
+# 3. 주제 전환 시 (즉시 DB 저장)
+asked_sub_topics.append(current_sub_topic)
+current_sub_topic = new_topic
+follow_up_count = 0
+db.commit()  # 매 답변마다 DB 저장
 
-    # 내부 상태
-    next_action: str                   # [follow_up, new_topic, wrap_up]
-    follow_up_count: int               # 꼬리 질문 횟수
-
-    # 세션 정보
-    session_id: int                    # InterviewSession ID
-    record_id: int                     # 생기부 ID
-
-    # 질문/답변
-    last_question: str
-    last_answer: str
-    last_response_time: int
+# 4. 종료 시 (마지막 DB 저장)
+session.status = "COMPLETED"
+session.final_report = generate_report(logs)
+db.commit()  # 종료 플래그와 리포트 저장
 ```
 
 ---
 
-## 9. Graph Nodes & Conditional Logic
+## 9. Interview Logic (Sequential Processing)
 
-### Nodes
+LangGraph 없이 순차적 함수 호출로 구현합니다.
 
-- **`analyzer`**: 답변 분석 후 [꼬리 질문 / 주제 전환 / 종료] 경로 결정.
-- **`retrieve_new_topic`**: 미중복 하위 주제 랜덤 선택 후 벡터 DB에서 새로운 청크 리스트 검색.
-- **`follow_up_llm`**: `current_context` 유지하며 구체적 근거(Why) 및 판단 기준 질문 생성.
-- **`new_question_llm`**: 새로운 주제 청크 기반 첫 질문 생성. **InterviewData에서 Few-shot 예시 검색 활용**.
-- **`wrap_up`**: 10분 초과 또는 주제 소진 시 최종 결과 데이터 생성.
+### 9.1 Main Flow
 
-### Conditional Logic (Analyzer)
+```python
+async def process_answer(session_id: str, answer: str, response_time: int):
+    # 1. State 로드
+    session = db.query(InterviewSession).filter_by(session_id=session_id).first()
 
-- **IF [충실도 낮음/구체성 부족]**: → `follow_up_llm` (꼬리 질문)
-- **IF [충실도 높음/주제 소진(3회 이상)]**: → `retrieve_new_topic` (주제 전환)
-- **IF [남은 시간 < 30초]**: → `wrap_up` (종료)
+    # 2. 답변 분석
+    analysis = await analyze_answer(answer, session)
+
+    # 3. 다음 액션 결정
+    next_action = decide_next_action(analysis, session)
+    # → "follow_up" / "new_topic" / "wrap_up"
+
+    # 4. 질문 생성 (SSE 스트리밍)
+    if next_action == "follow_up":
+        question = await generate_follow_up_question(session, analysis)
+
+        # State 업데이트 및 DB 저장
+        session.follow_up_count += 1
+        session.remaining_time -= response_time
+        session.interview_logs.append({...})
+        db.commit()
+
+    elif next_action == "new_topic":
+        question = await generate_new_topic_question(session)
+
+        # State 업데이트 및 DB 저장
+        session.asked_sub_topics.append(session.current_sub_topic)
+        session.current_sub_topic = question["sub_topic"]
+        session.follow_up_count = 0
+        session.remaining_time -= response_time
+        session.interview_logs.append({...})
+        db.commit()
+
+    else:  # wrap_up
+        report = generate_final_report(session.interview_logs)
+
+        # 종료 State 업데이트 및 DB 저장
+        session.status = "COMPLETED"
+        session.final_report = report
+        db.commit()
+
+        return stream_finished(report)
+
+    return stream_question(question["text"])
+```
+
+### 9.2 Decision Logic
+
+| 조건 | 다음 액션 |
+|------|----------|
+| 충실도 낮음 OR 구체성 부족 | `follow_up` (꼬리 질문) |
+| 충실도 높음 AND follow_up_count < 3 | `follow_up` (꼬리 질문) |
+| 충실도 높음 AND follow_up_count >= 3 | `new_topic` (주제 전환) |
+| 남은 시간 < 30초 OR 모든 주제 소진 | `wrap_up` (종료) |
+
+### 9.3 Question Generation Functions
+
+- **`generate_follow_up_question()`**: 현재 주제에서 구체적 근거 질문 생성
+- **`generate_new_topic_question()`**: 새로운 주제 선택 후 첫 질문 생성 (InterviewData RAG 활용)
+- **`generate_final_report()`**: 종합 평가 리포트 생성
 
 ---
 
@@ -260,3 +345,4 @@ class InterviewState(TypedDict):
 - **Structured Output**: AI 응답은 반드시 Pydantic 모델을 통한 JSON 포맷 강제.
 - **Cost**: 10분 면접 기준 약 26원 예상 (1초당 32토큰 계산).
 - **Few-shot Prompting**: InterviewData 테이블에서 검색한 실제 면접 질문을 예시로 활용하여 질문 품질 향상.
+- **Error Handling**: 모든 SSE 응답은 `status: "error"` 형식으로 에러 메시지 전송. 빈 질문 생성 시 기본 메시지 제공.

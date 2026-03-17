@@ -39,47 +39,74 @@ class InterviewService:
         mode: str
     ) -> InterviewSession:
         """면접 세션 생성"""
+        import uuid
         db = SessionLocal()
         try:
+            # 고유 session_id 생성: int_{user_id}_{record_id}_{random}
+            unique_id = f"int_{user_id}_{record_id}_{uuid.uuid4().hex[:8]}"
+
+            # 첫 질문("자기소개 부탁드립니다.")을 interview_logs에 미리 추가
+            initial_logs = [
+                {
+                    "question": "자기소개 부탁드립니다.",
+                    "answer": "",  # 사용자 답변은 빈 문자열로 초기화
+                    "response_time": 0,
+                    "sub_topic": ""
+                }
+            ]
+
             session = InterviewSession(
                 user_id=user_id,
                 record_id=record_id,
+                session_id=unique_id,
                 difficulty=difficulty,
                 target_university=target_university,
                 target_department=target_department,
                 mode=mode,
                 status="IN_PROGRESS",
-                interview_logs=[],
+                interview_logs=initial_logs,
+                asked_sub_topics=[],  # 빈 리스트로 초기화
+                follow_up_count=0,
                 remaining_time=600  # 10분
             )
             db.add(session)
             db.commit()
             db.refresh(session)
-            logger.info(f"Created interview session: {session.id}")
+            logger.info(f"Created interview session: {session.session_id} (ID: {session.id})")
             return session
         finally:
             db.close()
 
-    def get_session(self, session_id: int) -> Optional[InterviewSession]:
-        """세션 조회"""
+    def get_session(self, session_id: str) -> Optional[InterviewSession]:
+        """세션 조회 (session_id로)"""
         db = SessionLocal()
         try:
             return db.query(InterviewSession).filter(
-                InterviewSession.id == session_id
+                InterviewSession.session_id == session_id
+            ).first()
+        finally:
+            db.close()
+
+    def get_session_by_id(self, id: int) -> Optional[InterviewSession]:
+        """세션 조회 (DB ID로)"""
+        db = SessionLocal()
+        try:
+            return db.query(InterviewSession).filter(
+                InterviewSession.id == id
             ).first()
         finally:
             db.close()
 
     def update_session_state(
         self,
-        session_id: int,
+        session_id: str,
         **kwargs
     ) -> Optional[InterviewSession]:
         """세션 상태 업데이트"""
         db = SessionLocal()
         try:
             session = db.query(InterviewSession).filter(
-                InterviewSession.id == session_id
+                InterviewSession.session_id == session_id
             ).first()
 
             if not session:
@@ -99,7 +126,7 @@ class InterviewService:
 
     async def analyze_answer(
         self,
-        session_id: int,
+        session_id: str,
         answer: str,
         response_time: int,
         last_question: str,
@@ -128,7 +155,38 @@ class InterviewService:
                 return "new_topic"
 
             # 4. LLM으로 분석
-            prompt = f"""당신은 대학 입시 면접관입니다. 학생의 답변을 보고 다음 단계를 결정하세요.
+            prompt = self._build_analysis_prompt(
+                remaining_time=remaining_time,
+                last_question=last_question,
+                answer=answer,
+                response_time=response_time
+            )
+
+            # llm_service 사용
+            result = await llm_service.acomplete_generate(prompt)
+            action = result.strip().lower()
+
+            # 유효성 검사
+            if action not in ["follow_up", "new_topic", "wrap_up"]:
+                logger.warning(f"Invalid action: {action}, defaulting to new_topic")
+                action = "new_topic"
+
+            logger.info(f"Analysis complete: {action}")
+            return action
+
+        except Exception as e:
+            logger.error(f"Error analyzing answer: {e}")
+            return "wrap_up"
+
+    def _build_analysis_prompt(
+        self,
+        remaining_time: int,
+        last_question: str,
+        answer: str,
+        response_time: int
+    ) -> str:
+        """답변 분석용 프롬프트 생성"""
+        return f"""당신은 대학 입시 면접관입니다. 학생의 답변을 보고 다음 단계를 결정하세요.
 
 **면접 난이도**: Normal
 **남은 시간**: {remaining_time}초
@@ -151,35 +209,11 @@ class InterviewService:
 
 다음 액션 하나만 반환하세요 (follow_up, new_topic, wrap_up 중 하나):"""
 
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            from langchain_core.messages import HumanMessage
-
-            llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                temperature=0.7
-            )
-
-            # 간단한 텍스트 응답
-            result = await llm.ainvoke([HumanMessage(content=prompt)])
-            action = result.strip().lower()
-
-            # 유효성 검사
-            if action not in ["follow_up", "new_topic", "wrap_up"]:
-                logger.warning(f"Invalid action: {action}, defaulting to new_topic")
-                action = "new_topic"
-
-            logger.info(f"Analysis complete: {action}")
-            return action
-
-        except Exception as e:
-            logger.error(f"Error analyzing answer: {e}")
-            return "wrap_up"
-
     # ==================== 질문 생성 (SSE 스트리밍) ====================
 
     async def generate_follow_up_question(
         self,
-        session_id: int,
+        session_id: str,
         last_answer: str,
         current_sub_topic: str,
         follow_up_count: int,
@@ -192,14 +226,14 @@ class InterviewService:
             토큰 단위 텍스트
         """
         try:
-            # 세션에서 청크 ID 조회
+            # 세션 조회
             session = self.get_session(session_id)
-            if not session or not session.current_context:
-                # 청크가 없으면 빈 컨텍스트
-                context_text = "관련 학생부 정보가 없습니다."
-            else:
-                context_chunks = self._get_chunks_by_ids(session.current_context)
-                context_text = "\\n\\n".join(context_chunks)
+            if not session:
+                yield "죄송합니다. 세션을 찾을 수 없습니다."
+                return
+
+            # 학생부 컨텍스트가 없으면 빈 컨텍스트
+            context_text = "관련 학생부 정보가 없습니다."
 
             # InterviewData 검색
             db = SessionLocal()
@@ -250,7 +284,7 @@ class InterviewService:
 
     async def generate_new_topic_question(
         self,
-        session_id: int,
+        session_id: str,
         new_topic: str,
         target_department: str
     ) -> AsyncIterator[str]:
@@ -261,11 +295,17 @@ class InterviewService:
             토큰 단위 텍스트
         """
         try:
+            # 세션 조회
+            session = self.get_session(session_id)
+            if not session:
+                yield "죄송합니다. 세션을 찾을 수 없습니다."
+                return
+
             # 벡터 검색으로 관련 청크 가져오기
             db = SessionLocal()
             try:
                 chunk_ids = vector_service.search_chunks_by_topic(
-                    record_id=self.get_session(session_id).record_id,
+                    record_id=session.record_id,
                     topic=new_topic,
                     db=db
                 )
@@ -323,35 +363,6 @@ class InterviewService:
         except Exception as e:
             logger.error(f"Error generating new topic question: {e}")
             yield "죄송합니다. 질문 생성 중 오류가 발생했습니다."
-
-    # ==================== 종료 ====================
-
-    async def wrap_up_interview(self, session_id: int):
-        """면접 종료 및 요약 생성"""
-        db = SessionLocal()
-        try:
-            session = db.query(InterviewSession).filter(
-                InterviewSession.id == session_id
-            ).first()
-
-            if not session:
-                return
-
-            # 간단한 종료 메시지
-            closing_message = "면접을 종료합니다. 수고하셨습니다."
-
-            # 세션 업데이트
-            session.status = "COMPLETED"
-            session.completed_at = func.now()
-            db.commit()
-
-            logger.info(f"Interview session {session_id} completed")
-            return closing_message
-
-        except Exception as e:
-            logger.error(f"Error wrapping up interview: {e}")
-        finally:
-            db.close()
 
     # ==================== 헬퍼 메서드 ====================
 

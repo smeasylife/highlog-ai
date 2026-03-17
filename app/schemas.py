@@ -59,14 +59,18 @@ class QuestionGenerationInput(BaseModel):
 
 # ========== Interview Schemas ==========
 
-class InitializeInterviewRequest(BaseModel):
-    """면접 초기화 요청"""
+class StartInterviewRequest(BaseModel):
+    """면접 세션 시작 요청"""
     record_id: int = Field(..., description="생기부 ID")
     difficulty: str = Field("Normal", description="면접 난이도 (Easy, Normal, Hard)")
     target_university: str = Field(..., description="지원 대학교 (예: 가천대학교, 한양대학교)")
     target_department: str = Field(..., description="지원 학과 (예: 컴퓨터공학과)")
-    first_answer: str = Field(..., description="첫 답변 (자기소개)")
-    response_time: int = Field(..., description="첫 답변 소요 시간 (초)")
+    mode: str = Field("TEXT", description="면접 모드 (TEXT, AUDIO)")
+
+
+class StartInterviewResponse(BaseModel):
+    """면접 세션 시작 응답"""
+    session_id: str = Field(..., description="고유 세션 ID")
 
 
 class SimpleChatRequest(BaseModel):
@@ -75,22 +79,22 @@ class SimpleChatRequest(BaseModel):
     response_time: int = Field(..., description="답변 소요 시간 (초)")
 
 
-class InterviewChatResponse(BaseModel):
-    """면접 챗봇 응답 (간소화)"""
+class AudioChatRequest(BaseModel):
+    """오디오 채팅 요청"""
+    pass  # audio 파일은 Form 데이터로 처리
+
+
+class AudioInterviewResponse(BaseModel):
+    """오디오 면접 응답"""
+    transcript: str = Field(..., description="변환된 텍스트")
     next_question: str = Field(..., description="다음 질문 텍스트")
+    audio_url: Optional[str] = Field(None, description="다음 질문 음성 파일 URL")
+    sub_topic: Optional[str] = Field(None, description="현재 주제")
+    remaining_time: int = Field(..., description="남은 시간 (초)")
     is_finished: bool = Field(False, description="면접 종료 여부")
 
 
-class InitializeInterviewResponse(InterviewChatResponse):
-    """면접 초기화 응답 (thread_id 포함)"""
-    thread_id: str = Field(..., description="LangGraph thread ID")
-
-
-class AudioInterviewResponse(InterviewChatResponse):
-    """오디오 면접 응답 (음성 URL 포함)"""
-    audio_url: Optional[str] = Field(None, description="다음 질문 음성 파일 URL")
-
-
-class InitializeAudioInterviewResponse(AudioInterviewResponse):
-    """오디오 면접 초기화 응답 (thread_id 포함)"""
-    thread_id: str = Field(..., description="LangGraph thread ID")
+class InterviewChatResponse(BaseModel):
+    """텍스트 면접 챗봇 응답 (간소화)"""
+    next_question: str = Field(..., description="다음 질문 텍스트")
+    is_finished: bool = Field(False, description="면접 종료 여부")

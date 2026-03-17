@@ -99,19 +99,21 @@ class Question(Base):
 
 
 class InterviewSession(Base):
-    """면접 세션 정보 - user_id와 thread_id 매핑"""
+    """면접 세션 정보"""
     __tablename__ = "interview_sessions"
 
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     record_id = Column(BigInteger, ForeignKey("student_records.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    # LangGraph thread ID (unique)
-    thread_id = Column(String(255), unique=True, nullable=False, index=True)
+    # 고유 세션 ID (외부 노출용)
+    session_id = Column(String(255), unique=True, nullable=False, index=True)
 
     # 면접 설정
     difficulty = Column(String(20), default="Normal")  # Easy, Normal, Hard
     mode = Column(String(20), default="TEXT")  # TEXT, AUDIO
+    target_university = Column(String(100), nullable=True)  # 지원 대학교
+    target_department = Column(String(100), nullable=True)  # 지원 학과
 
     # 세션 상태
     status = Column(String(20), default="IN_PROGRESS")  # IN_PROGRESS, COMPLETED, ABANDONED
@@ -125,9 +127,15 @@ class InterviewSession(Base):
     total_questions = Column(Integer, default=0)
     total_duration = Column(Integer, nullable=True)  # 전체 소요 시간 (초)
 
+    # 면접 State (실시간 업데이트)
+    current_sub_topic = Column(String(100), nullable=True)  # 현재 주제
+    asked_sub_topics = Column(JSON, nullable=True)  # 완료된 주제 리스트 JSON 배열
+    follow_up_count = Column(Integer, default=0)  # 꼬리 질문 횟수
+    remaining_time = Column(Integer, default=600)  # 남은 시간 (초 단위, 기본 600초)
+
     # 대화 로그 (JSONB) - 질문, 답변, 응답 시간 저장
     interview_logs = Column(JSON, nullable=True)
-    # 예: [{"question": "...", "answer": "...", "response_time": 45, "sub_topic": "..."}, ...]
+    # 예: [{"question": "...", "answer": "...", "response_time": 45, "sub_topic": "...", "timestamp": "..."}, ...]
 
     # 최종 결과
     final_report = Column(JSON, nullable=True)
