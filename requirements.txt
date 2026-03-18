@@ -12,6 +12,7 @@ langchain-community>=0.3.0
 
 # Google AI (공식 SDK)
 google-genai>=1.0.0
+google-cloud-texttospeech>=2.20.0
 
 # Vector Database
 pgvector>=0.2.5

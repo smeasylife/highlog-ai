@@ -146,12 +146,12 @@ async def chat_text(
                         question_buffer.append(token)
                         yield f"data: {json.dumps({'status': 'generating', 'token': token}, ensure_ascii=False)}\n\n"
 
-                    # 질문 완료 메시지
+                    # 질문 완료 메시지 (question 필드 없이)
+                    yield f"data: {json.dumps({'status': 'completed'}, ensure_ascii=False)}\n\n"
+
                     full_question = "".join(question_buffer)
                     if not full_question.strip():
                         full_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
-
-                    yield f"data: {json.dumps({'status': 'completed', 'question': full_question, 'sub_topic': current_sub_topic}, ensure_ascii=False)}\n\n"
 
                     # 기존 마지막 로그의 답변 업데이트
                     follow_up_count += 1
@@ -192,7 +192,7 @@ async def chat_text(
                             current_sub_topic=current_sub_topic,
                             follow_up_count=follow_up_count,
                             remaining_time=max(0, remaining_time),
-                            interview_logs,
+                            interview_logs=logs,
                             status="COMPLETED"
                         )
                     else:
@@ -209,12 +209,12 @@ async def chat_text(
                             question_buffer.append(token)
                             yield f"data: {json.dumps({'status': 'generating', 'token': token}, ensure_ascii=False)}\n\n"
 
-                        # 질문 완료 메시지
+                        # 질문 완료 메시지 (question 필드 없이)
+                        yield f"data: {json.dumps({'status': 'completed'}, ensure_ascii=False)}\n\n"
+
                         full_question = "".join(question_buffer)
                         if not full_question.strip():
                             full_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
-
-                        yield f"data: {json.dumps({'status': 'completed', 'question': full_question, 'sub_topic': new_topic}, ensure_ascii=False)}\n\n"
 
                         # 기존 마지막 로그의 답변 업데이트
                         asked_sub_topics.append(current_sub_topic)

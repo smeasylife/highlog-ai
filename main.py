@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import settings
-from app.api import records, interview, test_records
+from app.api import records, interview, test_records, test_interview
 from app.database import engine, Base
 import logging
 
@@ -39,6 +39,7 @@ app.add_middleware(
 app.include_router(records.router, prefix="/ai/records", tags=["records"])
 app.include_router(interview.router, prefix="/ai/interview", tags=["interview"])
 app.include_router(test_records.router, prefix="/ai", tags=["test"])
+app.include_router(test_interview.router, prefix="/ai/interview/test", tags=["test_interview"])
 
 # Swagger UI 접근 경로 추가 (/ai/docs)
 from fastapi.openapi.docs import get_swagger_ui_html
