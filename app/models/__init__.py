@@ -122,11 +122,6 @@ class InterviewSession(Base):
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
-    # 통계 정보
-    avg_response_time = Column(Integer, nullable=True)  # 초 단위
-    total_questions = Column(Integer, default=0)
-    total_duration = Column(Integer, nullable=True)  # 전체 소요 시간 (초)
-
     # 면접 State (실시간 업데이트)
     current_sub_topic = Column(String(100), nullable=True)  # 현재 주제
     asked_sub_topics = Column(JSON, nullable=True)  # 완료된 주제 리스트 JSON 배열

@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional, AsyncIterator
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import InterviewSession
-from app.services.llm_service import llm_service
+from app.services.llm_service import llm_service, prompt_builder
 from app.services.vector_service import vector_service
 from datetime import datetime
 from sqlalchemy import func
@@ -126,7 +126,6 @@ class InterviewService:
 
     async def analyze_answer(
         self,
-        session_id: str,
         answer: str,
         response_time: int,
         last_question: str,
@@ -136,6 +135,14 @@ class InterviewService:
     ) -> str:
         """
         답변 분석 및 다음 액션 결정
+
+        Args:
+            answer: 사용자 답변
+            response_time: 답변 소요 시간
+            last_question: 이전 질문
+            remaining_time: 남은 시간
+            asked_sub_topics: 완료된 주제 리스트
+            follow_up_count: 꼬리 질문 횟수
 
         Returns:
             다음 액션 (follow_up, new_topic, wrap_up)
@@ -213,7 +220,6 @@ class InterviewService:
 
     async def generate_follow_up_question(
         self,
-        session_id: str,
         last_answer: str,
         current_sub_topic: str,
         follow_up_count: int,
@@ -226,12 +232,6 @@ class InterviewService:
             토큰 단위 텍스트
         """
         try:
-            # 세션 조회
-            session = self.get_session(session_id)
-            if not session:
-                yield "죄송합니다. 세션을 찾을 수 없습니다."
-                return
-
             # 학생부 컨텍스트가 없으면 빈 컨텍스트
             context_text = "관련 학생부 정보가 없습니다."
 
@@ -284,7 +284,7 @@ class InterviewService:
 
     async def generate_new_topic_question(
         self,
-        session_id: str,
+        record_id: int,
         new_topic: str,
         target_department: str
     ) -> AsyncIterator[str]:
@@ -295,17 +295,11 @@ class InterviewService:
             토큰 단위 텍스트
         """
         try:
-            # 세션 조회
-            session = self.get_session(session_id)
-            if not session:
-                yield "죄송합니다. 세션을 찾을 수 없습니다."
-                return
-
             # 벡터 검색으로 관련 청크 가져오기
             db = SessionLocal()
             try:
                 chunk_ids = vector_service.search_chunks_by_topic(
-                    record_id=session.record_id,
+                    record_id=record_id,
                     topic=new_topic,
                     db=db
                 )
@@ -435,6 +429,183 @@ class InterviewService:
         except Exception as e:
             logger.error(f"Error retrieving interview questions: {e}")
             return []
+
+    # ==================== 면접 결과 분석 ====================
+
+    async def analyze_interview_result(
+        self,
+        session: InterviewSession
+    ) -> Dict[str, Any]:
+        """
+        면접 결과 분석 및 종합 리포트 생성
+
+        Args:
+            session: InterviewSession 객체
+
+        Returns:
+            분석 결과 딕셔너리:
+            {
+                "interview_logs": [...],
+                "scores": {...},
+                "strength_tags": [...],
+                "weakness_tags": [...],
+                "detailed_analysis": [...]
+            }
+        """
+        try:
+            # 1. interview_logs 추출
+            interview_logs = session.interview_logs or []
+            if not interview_logs:
+                logger.warning(f"No interview logs found for session: {session.session_id}")
+                return self._get_empty_analysis(interview_logs)
+
+            # 2. final_report가 이미 있으면 반환
+            if session.final_report:
+                logger.info(f"Using existing final_report for session: {session.session_id}")
+                return {
+                    "interview_logs": interview_logs,
+                    **session.final_report
+                }
+
+            # 3. AI 분석 실행
+            logger.info(f"Starting AI analysis for session: {session.session_id}")
+            analysis_result = await self._run_ai_analysis(
+                interview_logs=interview_logs,
+                target_university=session.target_university or "알 수 없음",
+                target_department=session.target_department or "알 수 없음",
+                difficulty=session.difficulty or "Normal"
+            )
+
+            # 4. 결과를 final_report에 저장
+            final_report = {
+                "scores": analysis_result.get("scores", {}),
+                "strength_tags": analysis_result.get("strength_tags", []),
+                "weakness_tags": analysis_result.get("weakness_tags", []),
+                "detailed_analysis": analysis_result.get("detailed_analysis", [])
+            }
+
+            self.update_session_state(
+                session_id=session.session_id,
+                final_report=final_report
+            )
+
+            logger.info(f"Analysis completed and saved for session: {session.session_id}")
+
+            return {
+                "interview_logs": interview_logs,
+                **final_report
+            }
+
+        except ValueError as e:
+            logger.error(f"Validation error in analyze_interview_result: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error in analyze_interview_result: {e}")
+            raise
+
+    async def _run_ai_analysis(
+        self,
+        interview_logs: list,
+        target_university: str,
+        target_department: str,
+        difficulty: str
+    ) -> Dict[str, Any]:
+        """
+        AI를 활용한 면접 결과 분석
+
+        Args:
+            interview_logs: 면접 대화 기록
+            target_university: 지원 대학교
+            target_department: 지원 학과
+            difficulty: 면접 난이도
+
+        Returns:
+            AI 분석 결과
+        """
+        try:
+            # 프롬프트 생성
+            prompt = prompt_builder.build_analysis_prompt(
+                interview_logs=interview_logs,
+                target_university=target_university,
+                target_department=target_department,
+                difficulty=difficulty
+            )
+
+            # LLM 호출
+            response = await llm_service.acomplete_generate(prompt)
+
+            # JSON 파싱
+            import json
+            import re
+
+            # JSON 추출 (```json 제거)
+            json_match = re.search(r'```json\s*(.*?)\s*```', response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+            else:
+                json_str = response.strip()
+
+            analysis = json.loads(json_str)
+
+            # 결과 검증
+            self._validate_analysis_result(analysis)
+
+            return analysis
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parse error in _run_ai_analysis: {e}")
+            logger.error(f"Response was: {response[:500]}...")
+            raise ValueError("AI 분석 결과를 파싱하는 데 실패했습니다.")
+        except Exception as e:
+            logger.error(f"Error in _run_ai_analysis: {e}")
+            raise
+
+    def _validate_analysis_result(self, analysis: Dict[str, Any]) -> None:
+        """AI 분석 결과 검증"""
+        required_keys = ["scores", "strength_tags", "weakness_tags", "detailed_analysis"]
+
+        for key in required_keys:
+            if key not in analysis:
+                raise ValueError(f"Missing required key in analysis: {key}")
+
+        # scores 검증
+        scores = analysis.get("scores", {})
+        required_score_keys = ["전공적합성", "인성", "발전가능성", "의사소통능력", "총점"]
+
+        for score_key in required_score_keys:
+            if score_key not in scores:
+                raise ValueError(f"Missing required score key: {score_key}")
+            if not isinstance(scores[score_key], (int, float)):
+                raise ValueError(f"Score must be numeric: {score_key}")
+
+        # detailed_analysis 검증
+        detailed_analysis = analysis.get("detailed_analysis", [])
+        if not isinstance(detailed_analysis, list):
+            raise ValueError("detailed_analysis must be a list")
+
+        for item in detailed_analysis:
+            if not isinstance(item, dict):
+                raise ValueError("Each item in detailed_analysis must be a dict")
+            required_item_keys = ["question", "response_time", "evaluation", "improvement_point", "supplement_needed"]
+            for item_key in required_item_keys:
+                if item_key not in item:
+                    logger.warning(f"Missing key in detailed_analysis item: {item_key}")
+
+    def _get_empty_analysis(self, interview_logs: list) -> Dict[str, Any]:
+        """빈 분석 결과 반환 (면접 기록이 없는 경우)"""
+        return {
+            "interview_logs": interview_logs,
+            "scores": {
+                "전공적합성": 0,
+                "인성": 0,
+                "발전가능성": 0,
+                "의사소통능력": 0,
+                "총점": 0
+            },
+            "strength_tags": [],
+            "weakness_tags": ["면접 기록 부족"],
+            "detailed_analysis": []
+        }
 
 
 # 싱글톤 인스턴스

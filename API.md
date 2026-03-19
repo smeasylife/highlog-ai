@@ -204,11 +204,9 @@ response_time: 45
     {
       "session_id": 123,
       "question_count": 4,
-      "avg_response_time": 56,
       "total_duration": 240,
       "sub_topics": ["출결", "리더십"],
-      "created_at": "2026-03-15T12:00:00",
-      "record_title": "2025학년도 생활기록부"
+      "created_at": "2026-03-15T12:00:00"
     }
   ]
 }
@@ -216,41 +214,34 @@ response_time: 45
 
 ---
 
-### 4-2. 면접 로그 조회
-
-### GET /api/interview/logs/{session_id}
-
-특정 면접의 대화 기록을 반환합니다.
-
-**Response:**
-```json
-{
-  "session_id": "int_2_10_a1b2c3d4",
-  "difficulty": "Normal",
-  "mode": "TEXT",
-  "started_at": "2026-03-15T12:00:00",
-  "logs": [
-    {
-      "question": "자기소개 부탁드립니다.",
-      "answer": "안녕하세요...",
-      "response_time": 45,
-      "sub_topic": ""
-    }
-  ]
-}
-```
-
----
-
-### 4-3. 면접 결과 분석
+### 4-2. 면접 결과 분석
 
 ### GET /api/interview/analyze/{session_id}
 
 면접 종료 후 종합 평가를 생성합니다.
 
+**구현 방식:**
+- `interview_logs`: `interview_sessions` 테이블의 `interview_logs` 컬럼에서 가져오기
+- `scores`, `strength_tags`, `weakness_tags`, `detailed_analysis`: `interview_sessions` 테이블의 `final_report` JSON 컬럼에서 가져오기
+- 두 데이터를 합쳐서 반환
+
 **Response:**
 ```json
 {
+  "interview_logs": [
+    {
+      "question": "자기소개 부탁드립니다.",
+      "answer": "안녕하세요, 저는...",
+      "response_time": 45,
+      "sub_topic": ""
+    },
+    {
+      "question": "리더십 경험에 대해 말씀해주세요",
+      "answer": "동아리 부장으로서...",
+      "response_time": 60,
+      "sub_topic": "리더십"
+    }
+  ],
   "scores": {
     "전공적합성": 20,
     "인성": 18,

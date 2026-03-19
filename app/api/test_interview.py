@@ -123,7 +123,6 @@ async def chat_text_test(session_id: str, request: SimpleChatRequest):
 
                 # 3. 답변 분석
                 action = await interview_service.analyze_answer(
-                    session_id=session_id,
                     answer=request.answer,
                     response_time=request.response_time,
                     last_question=last_question,
@@ -137,7 +136,6 @@ async def chat_text_test(session_id: str, request: SimpleChatRequest):
                     # 꼬리 질문 (토큰 스트리밍)
                     question_buffer = []
                     async for token in interview_service.generate_follow_up_question(
-                        session_id=session_id,
                         last_answer=request.answer,
                         current_sub_topic=current_sub_topic,
                         follow_up_count=follow_up_count,
@@ -185,15 +183,17 @@ async def chat_text_test(session_id: str, request: SimpleChatRequest):
                         closing_message = "면접을 종료합니다. 수고하셨습니다."
                         yield f"data: {json.dumps({'status': 'finished', 'report': {'message': closing_message}}, ensure_ascii=False)}\n\n"
 
-                        # 마지막에 DB 반영
+                        # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
+                        logs[-1]["answer"] = request.answer
+                        logs[-1]["response_time"] = request.response_time
+
                         interview_service.update_session_state(
                             session_id=session_id,
                             asked_sub_topics=asked_sub_topics,
                             current_sub_topic=current_sub_topic,
                             follow_up_count=follow_up_count,
                             remaining_time=max(0, remaining_time),
-                            interview_logs=logs,
-                            status="COMPLETED"
+                            interview_logs=logs
                         )
                     else:
                         import random
@@ -202,7 +202,7 @@ async def chat_text_test(session_id: str, request: SimpleChatRequest):
                         # 새 주제 질문 생성 (토큰 스트리밍)
                         question_buffer = []
                         async for token in interview_service.generate_new_topic_question(
-                            session_id=session_id,
+                            record_id=session.record_id,
                             new_topic=new_topic,
                             target_department=session.target_department
                         ):
@@ -246,15 +246,17 @@ async def chat_text_test(session_id: str, request: SimpleChatRequest):
                     closing_message = "면접을 종료합니다. 수고하셨습니다."
                     yield f"data: {json.dumps({'status': 'finished', 'report': {'message': closing_message}}, ensure_ascii=False)}\n\n"
 
-                    # 마지막에 DB 반영
+                    # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
+                    logs[-1]["answer"] = request.answer
+                    logs[-1]["response_time"] = request.response_time
+
                     interview_service.update_session_state(
                         session_id=session_id,
                         asked_sub_topics=asked_sub_topics,
                         current_sub_topic=current_sub_topic,
                         follow_up_count=follow_up_count,
                         remaining_time=max(0, remaining_time),
-                        interview_logs=logs,
-                        status="COMPLETED"
+                        interview_logs=logs
                     )
 
             except Exception as e:
@@ -278,3 +280,70 @@ async def chat_text_test(session_id: str, request: SimpleChatRequest):
     except Exception as e:
         logger.error(f"[TEST] Error in chat_text: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== 면접 결과 분석 ====================
+
+@router.get("/analyze/{session_id}")
+async def analyze_test_interview_result(session_id: str):
+    """
+    면접 결과 분석 및 종합 리포트 반환 (인증 불필요)
+
+    Args:
+        session_id: 면접 세션 ID
+
+    Returns:
+        종합 분석 리포트:
+        {
+            "interview_logs": [...],
+            "scores": {...},
+            "strength_tags": [...],
+            "weakness_tags": [...],
+            "detailed_analysis": [...]
+        }
+    """
+    try:
+        from app.database import get_db
+        from app.models import InterviewSession
+
+        db = next(get_db())
+
+        try:
+            # InterviewSession 조회
+            interview_session = db.query(InterviewSession).filter(
+                InterviewSession.session_id == session_id
+            ).first()
+
+            if not interview_session:
+                raise HTTPException(status_code=404, detail="면접을 찾을 수 없습니다.")
+
+            logger.info(f"[TEST] Analyzing interview result for session: {session_id}")
+
+            # 면접 상태가 COMPLETED가 아니면 업데이트
+            if interview_session.status != "COMPLETED":
+                interview_service.update_session_state(
+                    session_id=session_id,
+                    status="COMPLETED",
+                    completed_at=datetime.now()
+                )
+                logger.info(f"[TEST] Updated session status to COMPLETED: {session_id}")
+
+            # AI 분석 실행
+            result = await interview_service.analyze_interview_result(interview_session)
+
+            logger.info(f"[TEST] Analysis completed for session: {session_id}")
+            return result
+
+        finally:
+            db.close()
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"[TEST] Validation error in analyze_interview_result: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"[TEST] Error analyzing interview result: {e}")
+        import traceback
+        logger.error(f"[TEST] Full traceback:\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="면접 결과 분석 중 오류가 발생했습니다.")

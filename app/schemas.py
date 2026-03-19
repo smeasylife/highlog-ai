@@ -1,6 +1,6 @@
 """Pydantic schemas for request/response validation"""
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 
 # ========== Request Schemas ==========
@@ -98,3 +98,35 @@ class InterviewChatResponse(BaseModel):
     """텍스트 면접 챗봇 응답 (간소화)"""
     next_question: str = Field(..., description="다음 질문 텍스트")
     is_finished: bool = Field(False, description="면접 종료 여부")
+
+
+class InterviewAnalysisRequest(BaseModel):
+    """면접 결과 분석 요청 (URL 파라미터로 처리하므로 비어있음)"""
+    pass
+
+
+class InterviewScore(BaseModel):
+    """면접 점수"""
+    전공적합성: int = Field(..., description="전공적합성 점수 (0-25)", ge=0, le=25)
+    인성: int = Field(..., description="인성 점수 (0-25)", ge=0, le=25)
+    발전가능성: int = Field(..., description="발전가능성 점수 (0-25)", ge=0, le=25)
+    의사소통능력: int = Field(..., description="의사소통능력 점수 (0-25)", ge=0, le=25)
+    총점: int = Field(..., description="총점 (0-100)", ge=0, le=100)
+
+
+class DetailedAnalysisItem(BaseModel):
+    """상세 분석 항목"""
+    question: str = Field(..., description="질문 내용")
+    response_time: int = Field(..., description="답변 소요 시간 (초)", ge=0)
+    evaluation: str = Field(..., description="평가 (매우 좋음, 좋음, 보통, 부족, 매우 부족, 평가 불가)")
+    improvement_point: str = Field(..., description="개선 사항")
+    supplement_needed: str = Field(..., description="보충 필요 내용")
+
+
+class InterviewAnalysisResponse(BaseModel):
+    """면접 결과 분석 응답"""
+    interview_logs: List[Dict[str, Any]] = Field(..., description="면접 대화 기록")
+    scores: InterviewScore = Field(..., description="면접 점수")
+    strength_tags: List[str] = Field(..., description="강점 태그 리스트")
+    weakness_tags: List[str] = Field(..., description="약점 태그 리스트")
+    detailed_analysis: List[DetailedAnalysisItem] = Field(..., description="상세 분석 리스트")

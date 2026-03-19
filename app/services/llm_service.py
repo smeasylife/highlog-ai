@@ -190,6 +190,106 @@ class PromptBuilder:
         """Few-shot 예시 포맷팅"""
         return "\\n\\n".join([f"- {q}" for q in questions])
 
+    @staticmethod
+    def build_analysis_prompt(
+        interview_logs: list,
+        target_university: str,
+        target_department: str,
+        difficulty: str
+    ) -> str:
+        """
+        면접 결과 분석용 프롬프트 생성
+
+        Args:
+            interview_logs: 면접 대화 기록
+            target_university: 지원 대학교
+            target_department: 지원 학과
+            difficulty: 면접 난이도
+
+        Returns:
+            분석용 프롬프트
+        """
+        # 대화 로그 포맷팅
+        conversation_text = ""
+        for i, log in enumerate(interview_logs, 1):
+            question = log.get("question", "")
+            answer = log.get("answer", "")
+            response_time = log.get("response_time", 0)
+            sub_topic = log.get("sub_topic", "")
+
+            conversation_text += f"""
+[질문 {i}]
+주제: {sub_topic}
+질문: {question}
+답변: {answer}
+소요 시간: {response_time}초
+---
+"""
+
+        prompt = f"""당신은 대학 입시 면접 관계자입니다. 학생의 면접 기록을 종합 분석하여 평가 리포트를 작성하세요.
+
+**면접 정보**:
+- 지원 대학: {target_university}
+- 지원 학과: {target_department}
+- 면접 난이도: {difficulty}
+
+**면접 대화 기록**:
+{conversation_text}
+
+**분석 지침**:
+
+1. **점수 평가 (총점 100점 만점, 각 항목 25점 만점)**:
+   - 전공적합성: 지원 학과에 대한 이해도, 관심사, 관련 활동의 구체성
+   - 인성: 태도, 성실성, 배려심, 가치관 등 인적 자질
+   - 발전가능성: 학습 능력, 성장 가능성, 자기주도성
+   - 의사소통능력: 논리적 표현, 경청 태도, 명확성
+
+2. **강점 태그 (3개 이내)**:
+   - 구체적 사례 제시, 논리적 구조, 적극적 태도, 전공 지식, 경험의 깊이 등
+   - 답변에서 돋보이는 장점을 간결한 키워드로 추출
+
+3. **약점 태그 (3개 이내)**:
+   - 답변 시간이 느림, 추상적 답변, 구체성 부족, 논리적 허점, 경험 부족 등
+   - 개선이 필요한 부분을 간결한 키워드로 추출
+
+4. **상세 분석 (각 질문별)**:
+   각 질문에 대해 다음을 분석하세요:
+   - evaluation: 평가 (매우 좋음, 좋음, 보통, 부족, 매우 부족 중 하나)
+   - improvement_point: 구체적 개선 사항 (예: "결론을 먼저 말하고 구체 사례 덧붙이기")
+   - supplement_needed: 보충이 필요한 내용 (예: "구체적인 결과 수치 언급하기")
+
+**출력 형식 (반드시 JSON 형식만 반환)**:
+```json
+{{
+  "scores": {{
+    "전공적합성": 0-25,
+    "인성": 0-25,
+    "발전가능성": 0-25,
+    "의사소통능력": 0-25,
+    "총점": 0-100
+  }},
+  "strength_tags": ["강점1", "강점2", "강점3"],
+  "weakness_tags": ["약점1", "약점2", "약점3"],
+  "detailed_analysis": [
+    {{
+      "question": "질문 내용",
+      "response_time": 45,
+      "evaluation": "매우 좋음/좋음/보통/부족/매우 부족",
+      "improvement_point": "개선 사항",
+      "supplement_needed": "보충 필요 내용"
+    }}
+  ]
+}}
+```
+
+**중요**:
+- 점수는 고등학생 수준을 고려하여 현실적으로 부여하세요 (과도하게 높거나 낮지 않게)
+- 답변이 없는 경우 evaluation은 "평가 불가"로 처리
+- JSON 외에 다른 텍스트는 포함하지 마세요
+- detailed_analysis는 모든 질문에 대해 작성하세요 (자기소개 제외 가능)"""
+
+        return prompt
+
 
 # ==================== 싱글톤 인스턴스 ====================
 

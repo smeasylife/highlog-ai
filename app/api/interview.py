@@ -123,7 +123,6 @@ async def chat_text(
 
                 # 3. 답변 분석
                 action = await interview_service.analyze_answer(
-                    session_id=session_id,
                     answer=request.answer,
                     response_time=request.response_time,
                     last_question=last_question,
@@ -137,7 +136,6 @@ async def chat_text(
                     # 꼬리 질문 (토큰 스트리밍)
                     question_buffer = []
                     async for token in interview_service.generate_follow_up_question(
-                        session_id=session_id,
                         last_answer=request.answer,
                         current_sub_topic=current_sub_topic,
                         follow_up_count=follow_up_count,
@@ -185,15 +183,17 @@ async def chat_text(
                         closing_message = "면접을 종료합니다. 수고하셨습니다."
                         yield f"data: {json.dumps({'status': 'finished', 'report': {'message': closing_message}}, ensure_ascii=False)}\n\n"
 
-                        # 마지막에 DB 반영
+                        # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
+                        logs[-1]["answer"] = request.answer
+                        logs[-1]["response_time"] = request.response_time
+
                         interview_service.update_session_state(
                             session_id=session_id,
                             asked_sub_topics=asked_sub_topics,
                             current_sub_topic=current_sub_topic,
                             follow_up_count=follow_up_count,
                             remaining_time=max(0, remaining_time),
-                            interview_logs=logs,
-                            status="COMPLETED"
+                            interview_logs=logs
                         )
                     else:
                         import random
@@ -202,7 +202,7 @@ async def chat_text(
                         # 새 주제 질문 생성 (토큰 스트리밍)
                         question_buffer = []
                         async for token in interview_service.generate_new_topic_question(
-                            session_id=session_id,
+                            record_id=session.record_id,
                             new_topic=new_topic,
                             target_department=session.target_department
                         ):
@@ -246,15 +246,17 @@ async def chat_text(
                     closing_message = "면접을 종료합니다. 수고하셨습니다."
                     yield f"data: {json.dumps({'status': 'finished', 'report': {'message': closing_message}}, ensure_ascii=False)}\n\n"
 
-                    # 마지막에 DB 반영
+                    # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
+                    logs[-1]["answer"] = request.answer
+                    logs[-1]["response_time"] = request.response_time
+
                     interview_service.update_session_state(
                         session_id=session_id,
                         asked_sub_topics=asked_sub_topics,
                         current_sub_topic=current_sub_topic,
                         follow_up_count=follow_up_count,
                         remaining_time=max(0, remaining_time),
-                        interview_logs=logs,
-                        status="COMPLETED"
+                        interview_logs=logs
                     )
 
             except Exception as e:
@@ -335,7 +337,6 @@ async def chat_audio(
 
         # 4. 답변 분석
         action = await interview_service.analyze_answer(
-            session_id=session_id,
             answer=transcript,
             response_time=response_time,
             last_question=last_question,
@@ -345,6 +346,8 @@ async def chat_audio(
         )
 
         # 5. 액션에 따라 질문 생성
+
+        # 5. 액션에 따라 질문 생성
         next_question = ""
         is_finished = False
 
@@ -352,7 +355,6 @@ async def chat_audio(
             # 꼬리 질문 생성
             question_buffer = ""
             async for token in interview_service.generate_follow_up_question(
-                session_id=session_id,
                 last_answer=transcript,
                 current_sub_topic=current_sub_topic,
                 follow_up_count=follow_up_count,
@@ -395,15 +397,17 @@ async def chat_audio(
                 # 종료
                 closing_message = "면접을 종료합니다. 수고하셨습니다."
 
-                # 마지막에 DB 반영
+                # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
+                logs[-1]["answer"] = transcript
+                logs[-1]["response_time"] = response_time
+
                 interview_service.update_session_state(
                     session_id=session_id,
                     asked_sub_topics=asked_sub_topics,
                     current_sub_topic=current_sub_topic,
                     follow_up_count=follow_up_count,
                     remaining_time=max(0, remaining_time),
-                    interview_logs=logs,
-                    status="COMPLETED"
+                    interview_logs=logs
                 )
 
                 return AudioInterviewResponse(
@@ -420,7 +424,7 @@ async def chat_audio(
             # 새 주제 질문 생성
             question_buffer = ""
             async for token in interview_service.generate_new_topic_question(
-                session_id=session_id,
+                record_id=session.record_id,
                 new_topic=new_topic,
                 target_department=session.target_department or ""
             ):
@@ -459,15 +463,17 @@ async def chat_audio(
             # 종료
             closing_message = "면접을 종료합니다. 수고하셨습니다."
 
-            # 마지막에 DB 반영
+            # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
+            logs[-1]["answer"] = transcript
+            logs[-1]["response_time"] = response_time
+
             interview_service.update_session_state(
                 session_id=session_id,
                 asked_sub_topics=asked_sub_topics,
                 current_sub_topic=current_sub_topic,
                 follow_up_count=follow_up_count,
                 remaining_time=max(0, remaining_time),
-                interview_logs=logs,
-                status="COMPLETED"
+                interview_logs=logs
             )
 
             return AudioInterviewResponse(
@@ -521,11 +527,9 @@ async def get_interview_history(
         List[Dict]:
             - session_id: 세션 ID
             - question_count: 질문 갯수
-            - avg_response_time: 평균 응답 시간 (초)
             - total_duration: 전체 소요 시간 (초)
             - sub_topics: 주제 리스트
             - created_at: 면접 시작 시간
-            - record_title: 생기부 제목
     """
     try:
         from app.models import InterviewSession
@@ -546,12 +550,10 @@ async def get_interview_history(
                 # 질문 갯수
                 question_count = len(interview_logs)
 
-                # 전체 소요 시간
-                total_duration = 0
-                if session.completed_at and session.started_at:
-                    total_duration = int((session.completed_at - session.started_at).total_seconds())
-                else:
-                    total_duration = sum(log.get('response_time', 0) for log in interview_logs)
+                # 전체 소요 시간 (초기 600초 - 현재 remaining_time)
+                INITIAL_TIME = 600  # 10분
+                remaining_time = session.remaining_time or INITIAL_TIME
+                total_duration = max(0, INITIAL_TIME - remaining_time)
 
                 # sub_topic 리스트 (중복 제거)
                 sub_topics = list(set(
@@ -559,19 +561,12 @@ async def get_interview_history(
                     if log.get('sub_topic')
                 ))
 
-                # StudentRecord에서 title 조회
-                record_title = None
-                if session.record:
-                    record_title = session.record.title
-
                 history.append({
                     "session_id": session.session_id,
                     "question_count": question_count,
-                    "avg_response_time": session.avg_response_time or 0,
                     "total_duration": total_duration,
                     "sub_topics": sub_topics,
-                    "created_at": session.started_at.isoformat() if session.started_at else None,
-                    "record_title": record_title
+                    "created_at": session.started_at.isoformat() if session.started_at else None
                 })
 
             logger.info(f"Retrieved {len(history)} interview sessions for user {current_user.user_id}")
@@ -585,65 +580,6 @@ async def get_interview_history(
 
     except Exception as e:
         logger.error(f"Error retrieving interview history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ==================== 면접 로그 조회 ====================
-
-@router.get("/logs/{session_id}")
-async def get_interview_logs(
-    session_id: str,
-    current_user: CurrentUser = Depends(get_current_user)
-):
-    """
-    특정 면접의 대화 기록 반환
-
-    Args:
-        session_id: 면접 세션 ID
-
-    Returns:
-        대화 기록:
-            - session_id: 면접 식별자
-            - difficulty: 난이도
-            - mode: 면접 방식 (TEXT, AUDIO)
-            - started_at: 면접 시작 시간
-            - logs: 질문/답변 로그 리스트
-    """
-    try:
-        from app.database import get_db
-        from app.models import InterviewSession
-
-        db = next(get_db())
-
-        try:
-            # InterviewSession 조회
-            interview_session = db.query(InterviewSession).filter(
-                InterviewSession.session_id == session_id
-            ).first()
-
-            if not interview_session:
-                raise HTTPException(status_code=404, detail="면접을 찾을 수 없습니다.")
-
-            # 권한 확인
-            if interview_session.user_id != current_user.user_id:
-                raise HTTPException(status_code=403, detail="Access denied to this interview")
-
-            # interview_logs 반환
-            return {
-                "session_id": interview_session.session_id,
-                "difficulty": interview_session.difficulty,
-                "mode": interview_session.mode,
-                "started_at": interview_session.started_at.isoformat() if interview_session.started_at else None,
-                "logs": interview_session.interview_logs if interview_session.interview_logs else []
-            }
-
-        finally:
-            db.close()
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error retrieving interview logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -661,7 +597,14 @@ async def analyze_interview_result(
         session_id: 면접 세션 ID
 
     Returns:
-        종합 분석 리포트
+        종합 분석 리포트:
+        {
+            "interview_logs": [...],
+            "scores": {...},
+            "strength_tags": [...],
+            "weakness_tags": [...],
+            "detailed_analysis": [...]
+        }
     """
     try:
         from app.database import get_db
@@ -682,25 +625,33 @@ async def analyze_interview_result(
             if interview_session.user_id != current_user.user_id:
                 raise HTTPException(status_code=403, detail="Access denied to this interview")
 
-            # TODO: 실제 분석 로직 구현 (현재는 더미 데이터)
-            return {
-                "scores": {
-                    "전공적합성": 20,
-                    "인성": 18,
-                    "발전가능성": 22,
-                    "의사소통능력": 19,
-                    "총점": 79
-                },
-                "strength_tags": ["구체적 사례 제시", "논리적 구조"],
-                "weakness_tags": ["답변 시간이 느림"],
-                "detailed_analysis": []
-            }
+            logger.info(f"Analyzing interview result for session: {session_id}")
+
+            # 면접 상태가 COMPLETED가 아니면 업데이트
+            if interview_session.status != "COMPLETED":
+                interview_service.update_session_state(
+                    session_id=session_id,
+                    status="COMPLETED",
+                    completed_at=datetime.now()
+                )
+                logger.info(f"Updated session status to COMPLETED: {session_id}")
+
+            # AI 분석 실행
+            result = await interview_service.analyze_interview_result(interview_session)
+
+            logger.info(f"Analysis completed for session: {session_id}")
+            return result
 
         finally:
             db.close()
 
     except HTTPException:
         raise
+    except ValueError as e:
+        logger.error(f"Validation error in analyze_interview_result: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error analyzing interview result: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="면접 결과 분석 중 오류가 발생했습니다.")
