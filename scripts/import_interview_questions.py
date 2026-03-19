@@ -80,15 +80,6 @@ def import_interview_questions(json_file_path: str):
 
         logger.info(f"Total questions to import: {len(questions_data)}")
 
-        # 기존 데이터 확인
-        existing_count = db.query(InterviewData).count()
-        logger.info(f"Existing interview questions in DB: {existing_count}")
-
-        if existing_count > 0:
-            logger.info(f"DB already has {existing_count} questions. Clearing and re-importing...")
-            db.query(InterviewData).delete()
-            db.commit()
-
         # 질문 데이터 가져오기
         success_count = 0
         error_count = 0
@@ -121,6 +112,11 @@ def import_interview_questions(json_file_path: str):
                 if (i + 1) % batch_size == 0:
                     db.commit()
                     logger.info(f"Progress: {i + 1}/{len(questions_data)} questions imported")
+
+                    # Rate limit 방지: 5초 대기
+                    import time
+                    logger.info("⏸️  Waiting 5 seconds to avoid rate limit...")
+                    time.sleep(5)
 
                 success_count += 1
 
