@@ -156,35 +156,10 @@ class AudioService:
             
             logger.info(f"TTS audio uploaded to S3: {audio_url}")
             return audio_url
-            
+
         except Exception as e:
             logger.error(f"TTS failed: {e}")
             return None
-    
-    async def transcribe_audio_file(
-        self,
-        audio_file_path: str,
-        mime_type: str = "audio/webm"
-    ) -> str:
-        """
-        오디오 파일 경로에서 텍스트로 변환
-        
-        Args:
-            audio_file_path: 오디오 파일 경로
-            mime_type: 오디오 파일 MIME 타입
-            
-        Returns:
-            변환된 텍스트
-        """
-        try:
-            with open(audio_file_path, "rb") as f:
-                audio_bytes = f.read()
-            
-            return await self.transcribe_audio(audio_bytes, mime_type)
-            
-        except Exception as e:
-            logger.error(f"Failed to transcribe audio file {audio_file_path}: {e}")
-            return ""
 
 
 audio_service = AudioService()

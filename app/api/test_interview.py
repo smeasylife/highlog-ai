@@ -3,18 +3,21 @@
 이 파일은 로컬 개발/테스트 환경에서 JWT 인증 없이 면접 기능을 테스트하기 위해 제공됩니다.
 - POST /ai/interview/test/start: 인증 없는 면접 세션 시작
 - POST /ai/interview/test/chat/text/{session_id}: 인증 없는 텍스트 채팅
+- POST /ai/interview/test/chat/audio/{session_id}: 인증 없는 오디오 채팅
 """
 import logging
 import json
+import io
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
-from app.schemas import StartInterviewResponse, SimpleChatRequest
+from app.schemas import StartInterviewResponse, SimpleChatRequest, AudioInterviewResponse
 from app.services.interview_service import interview_service, SUB_TOPICS
+from app.services.audio_service import audio_service
 
 logger = logging.getLogger(__name__)
 
@@ -347,3 +350,234 @@ async def analyze_test_interview_result(session_id: str):
         import traceback
         logger.error(f"[TEST] Full traceback:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="면접 결과 분석 중 오류가 발생했습니다.")
+
+
+# ==================== 오디오 기반 면접 ====================
+
+@router.post("/chat/audio/{session_id}")
+async def chat_audio_test(
+    session_id: str,
+    audio: UploadFile = File(...),
+    response_time: int = Form(...)
+):
+    """
+    오디오 기반 실시간 면접 (인증 불필요)
+
+    Args:
+        session_id: 면접 세션 ID (URL 경로 파라미터)
+        audio: 오디오 파일
+        response_time: 답변 소요 시간 (초)
+
+    Returns:
+        AudioInterviewResponse: 다음 질문, 음성 URL
+    """
+    try:
+        logger.info(f"[TEST] Audio chat request for session_id: {session_id}")
+
+        # 1. 세션 조회 (권한 확인 없이 세션만 확인)
+        session = interview_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        # 2. 메모리에서 State 관리
+        current_sub_topic = session.current_sub_topic or ""
+        asked_sub_topics = session.asked_sub_topics or []
+        follow_up_count = session.follow_up_count or 0
+        remaining_time = session.remaining_time or 600
+        logs = session.interview_logs or []
+
+        # 3. STT (Speech-to-Text)
+        audio_bytes = io.BytesIO(await audio.read())
+        transcript = await audio_service.transcribe_audio(
+            audio_bytes=audio_bytes,
+            mime_type=audio.content_type
+        )
+
+        if not transcript:
+            raise HTTPException(status_code=400, detail="Failed to transcribe audio")
+
+        logger.info(f"[TEST] Transcribed text: {transcript[:100]}...")
+
+        # interview_logs에서 가장 최근 질문 가져오기
+        last_question = logs[-1].get("question", "") if logs else ""
+
+        # 남은 시간 먼저 차감
+        remaining_time -= response_time
+
+        # 4. 답변 분석
+        action = await interview_service.analyze_answer(
+            answer=transcript,
+            response_time=response_time,
+            last_question=last_question,
+            remaining_time=remaining_time,
+            asked_sub_topics=asked_sub_topics,
+            follow_up_count=follow_up_count
+        )
+
+        # 5. 액션에 따라 질문 생성
+        next_question = ""
+        is_finished = False
+
+        if action == "follow_up":
+            # 꼬리 질문 생성
+            question_buffer = ""
+            async for token in interview_service.generate_follow_up_question(
+                last_answer=transcript,
+                current_sub_topic=current_sub_topic,
+                follow_up_count=follow_up_count,
+                target_department=session.target_department or ""
+            ):
+                question_buffer += token
+            next_question = question_buffer
+
+            if not next_question.strip():
+                next_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
+
+            # 기존 마지막 로그의 답변 업데이트
+            follow_up_count += 1
+            logs[-1]["answer"] = transcript
+            logs[-1]["response_time"] = response_time
+
+            # 새로운 질문 append
+            logs.append({
+                "question": next_question,
+                "answer": "",
+                "response_time": 0,
+                "sub_topic": current_sub_topic
+            })
+
+            # 갱신된 상태를 DB에 저장
+            interview_service.update_session_state(
+                session_id=session_id,
+                asked_sub_topics=asked_sub_topics,
+                current_sub_topic=current_sub_topic,
+                follow_up_count=follow_up_count,
+                remaining_time=max(0, remaining_time),
+                interview_logs=logs
+            )
+
+        elif action == "new_topic":
+            # 새로운 주제 선택
+            remaining_topics = [t for t in SUB_TOPICS if t not in asked_sub_topics]
+
+            if not remaining_topics:
+                # 종료
+                closing_message = "면접을 종료합니다. 수고하셨습니다."
+
+                # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
+                logs[-1]["answer"] = transcript
+                logs[-1]["response_time"] = response_time
+
+                interview_service.update_session_state(
+                    session_id=session_id,
+                    asked_sub_topics=asked_sub_topics,
+                    current_sub_topic=current_sub_topic,
+                    follow_up_count=follow_up_count,
+                    remaining_time=max(0, remaining_time),
+                    interview_logs=logs
+                )
+
+                return AudioInterviewResponse(
+                    transcript=transcript,
+                    next_question=closing_message,
+                    sub_topic=None,
+                    remaining_time=0,
+                    is_finished=True
+                )
+
+            import random
+            new_topic = random.choice(remaining_topics)
+
+            # 새 주제 질문 생성
+            question_buffer = ""
+            async for token in interview_service.generate_new_topic_question(
+                record_id=session.record_id,
+                new_topic=new_topic,
+                target_department=session.target_department or ""
+            ):
+                question_buffer += token
+            next_question = question_buffer
+
+            if not next_question.strip():
+                next_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
+
+            # 기존 마지막 로그의 답변 업데이트
+            asked_sub_topics.append(current_sub_topic)
+            current_sub_topic = new_topic
+            follow_up_count = 0
+            logs[-1]["answer"] = transcript
+            logs[-1]["response_time"] = response_time
+
+            # 새로운 질문 append
+            logs.append({
+                "question": next_question,
+                "answer": "",
+                "response_time": 0,
+                "sub_topic": new_topic
+            })
+
+            # 갱신된 상태를 DB에 저장
+            interview_service.update_session_state(
+                session_id=session_id,
+                asked_sub_topics=asked_sub_topics,
+                current_sub_topic=current_sub_topic,
+                follow_up_count=follow_up_count,
+                remaining_time=max(0, remaining_time),
+                interview_logs=logs
+            )
+
+        elif action == "wrap_up":
+            # 종료
+            closing_message = "면접을 종료합니다. 수고하셨습니다."
+
+            # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
+            logs[-1]["answer"] = transcript
+            logs[-1]["response_time"] = response_time
+
+            interview_service.update_session_state(
+                session_id=session_id,
+                asked_sub_topics=asked_sub_topics,
+                current_sub_topic=current_sub_topic,
+                follow_up_count=follow_up_count,
+                remaining_time=max(0, remaining_time),
+                interview_logs=logs
+            )
+
+            return AudioInterviewResponse(
+                transcript=transcript,
+                next_question=closing_message,
+                sub_topic=None,
+                remaining_time=0,
+                is_finished=True
+            )
+
+        # 6. TTS (Text-to-Speech)
+        audio_url = None
+        if next_question and not is_finished:
+            try:
+                audio_url = await audio_service.text_to_speech(
+                    text=next_question,
+                    language_code="ko-KR"
+                )
+                logger.info(f"[TEST] TTS audio URL generated: {audio_url}")
+            except Exception as tts_error:
+                logger.error(f"[TEST] TTS failed: {tts_error}")
+                audio_url = None
+
+        # 7. 결과 반환
+        return AudioInterviewResponse(
+            transcript=transcript,
+            next_question=next_question,
+            audio_url=audio_url,
+            sub_topic=current_sub_topic,
+            remaining_time=max(0, remaining_time),
+            is_finished=False
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[TEST] Error in chat_audio: {e}")
+        import traceback
+        logger.error(f"[TEST] Full traceback:\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -8,7 +8,7 @@ Interview AI 서비스의 핵심 API 명세입니다. 실시간 면접 시스템
 
 ## 1. 생기부 등록 (PDF Vectorization)
 
-### POST /api/records
+### POST /ai/records
 
 S3 업로드 완료 후 파일 경로와 메타데이터를 저장하고, PDF OCR → 청킹 → 임베딩 → 벡터 DB 저장을 진행합니다. SSE 스트리밍으로 진행률을 실시간으로 반환합니다.
 
@@ -48,7 +48,7 @@ data: {"status": "error", "message": "에러 메시지"}
 
 ## 2. 질문 생성 (Bulk Question Generation)
 
-### POST /api/records/{recordId}/questions
+### POST /ai/records/{recordId}/questions
 
 생활기록부를 기반으로 맞춤형 면접 질문을 생성합니다.
 
@@ -70,7 +70,7 @@ data: {"status": "error", "message": "에러 메시지"}
 
 ### 3-1. 면접 세션 시작
 
-### POST /api/interview/start
+### POST /ai/interview/start
 
 면접 세션을 생성하고 고유 session_id를 반환합니다. 첫 질문("자기소개 부탁드립니다.")은 프론트엔드에서 고정 표시합니다.
 
@@ -103,7 +103,7 @@ data: {"status": "error", "message": "에러 메시지"}
 
 ### 3-2. 텍스트 기반 면접 채팅
 
-### POST /api/interview/chat/text/{session_id}
+### POST /ai/interview/chat/text/{session_id}
 
 사용자의 텍스트 답변을 받아 AI가 분석하고 다음 질문을 생성합니다. **LLM 토큰 단위로 실시간 스트리밍됩니다.**
 
@@ -126,8 +126,8 @@ data: {"status": "generating", "token": "어떤 방법으로"}
 data: {"status": "generating", "token": "의견 차이를"}
 ...
 
-# 질문 생성 완료
-data: {"status": "completed", "question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?", "sub_topic": "리더십"}
+# 질문 생성 완료 (question 필드 없음, 이미 토큰으로 전송됨)
+data: {"status": "completed"}
 
 # 면접 종료
 data: {"status": "finished", "report": {...}}
@@ -146,7 +146,7 @@ data: {"status": "error", "message": "질문 생성 중 오류가 발생했습�
 
 ### 3-3. 오디오 기반 면접 채팅
 
-### POST /api/interview/chat/audio/{session_id}
+### POST /ai/interview/chat/audio/{session_id}
 
 사용자의 음성 답변을 받아 STT → AI 처리 → TTS 과정을 거쳐 음성 질문을 반환합니다.
 
@@ -193,7 +193,7 @@ response_time: 45
 
 ### 4-1. 면접 내역 조회
 
-### GET /api/interview/list
+### GET /ai/interview/list
 
 로그인한 사용자의 모든 면접 내역을 조회합니다.
 
@@ -216,7 +216,7 @@ response_time: 45
 
 ### 4-2. 면접 결과 분석
 
-### GET /api/interview/analyze/{session_id}
+### GET /ai/interview/analyze/{session_id}
 
 면접 종료 후 종합 평가를 생성합니다.
 
