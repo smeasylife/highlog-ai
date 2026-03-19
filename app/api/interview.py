@@ -344,9 +344,6 @@ async def chat_audio(
             asked_sub_topics=asked_sub_topics,
             follow_up_count=follow_up_count
         )
-
-        # 5. 액션에 따라 질문 생성
-
         # 5. 액션에 따라 질문 생성
         next_question = ""
         is_finished = False
@@ -415,7 +412,7 @@ async def chat_audio(
                     next_question=closing_message,
                     sub_topic=None,
                     remaining_time=0,
-                    is_finished=True
+                    is_finished=False  # 남은 주제 없어도 종료 메시지만 전달
                 )
 
             import random
@@ -504,7 +501,7 @@ async def chat_audio(
             audio_url=audio_url,
             sub_topic=current_sub_topic,
             remaining_time=max(0, remaining_time),
-            is_finished=False
+            is_finished=is_finished
         )
 
     except HTTPException:
