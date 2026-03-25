@@ -16,6 +16,7 @@ S3 업로드 완료 후 파일 경로와 메타데이터를 저장하고, PDF OC
 ```json
 {
   "title": "2025학년도 생기부",
+  "filename": "생활기록부.pdf",
   "s3Key": "users/1/records/uuid_filename.pdf"
 }
 ```

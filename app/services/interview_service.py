@@ -220,6 +220,7 @@ class InterviewService:
 
     async def generate_follow_up_question(
         self,
+        last_question: str,
         last_answer: str,
         current_sub_topic: str,
         follow_up_count: int,
@@ -261,18 +262,25 @@ class InterviewService:
 **현재 주제**: {current_sub_topic}
 **꼬리 질문 횟수**: {follow_up_count + 1}회차
 
-**이전 답변**:
-{last_answer}
+**이전 대화**:
+Q: {last_question}
+A: {last_answer}
 
 **관련 학생부 정보**:
 {context_text}
 {few_shot_section}
+**출력 형식 지침 (중요)**:
+1. 답변에 대한 간단한 맞장구(acknowledgment)를 먼저 출력하세요.
+   - 예: "네 알겠습니다.", "그렇군요.", "이해했습니다.", "좋은 경험이네요." 등
+   - 맞장구는 1문장으로 간결하게
+2. 그 다음 꼬리 질문을 생성하세요
+
 **꼬리 질문 생성 지침**:
 1. 답변에서 언급된 구체적 사례, 판단 근거, 배운 점을 집요하게 캐묻으세요.
 2. "왜 그렇게 생각했나?", "구체적으로 어떤 결과였나?" 등의 패턴 활용
 3. 학생부 정보와 교차 검증하여 질문
 
-다음 꼬리 질문을 생성하세요:"""
+답변에 대한 맞장구와 꼬리 질문을 생성하세요:"""
 
             # LLM 스트리밍 호출
             async for token in llm_service.astream_generate(prompt):
@@ -286,7 +294,9 @@ class InterviewService:
         self,
         record_id: int,
         new_topic: str,
-        target_department: str
+        target_department: str,
+        last_question: Optional[str] = None,
+        last_answer: Optional[str] = None
     ) -> AsyncIterator[str]:
         """
         새로운 주제 첫 질문 생성 (토큰 스트리밍)
@@ -325,14 +335,27 @@ class InterviewService:
 위 예시들의 스타일과 난이도를 참고하여 첫 질문을 생성하세요.
 """ if few_shot_examples else ""
 
+            # 이전 대화가 있으면 프롬프트에 포함
+            prev_conversation_section = f"""
+**이전 대화**:
+Q: {last_question}
+A: {last_answer}
+""" if last_question and last_answer else ""
+
             prompt = f"""당신은 대학 입시 면접관입니다. 새로운 주제에 대한 첫 질문을 생성하세요.
 
 **면접 난이도**: Normal
 **새로운 주제**: {new_topic}
-
+{prev_conversation_section}
 **관련 학생부 정보**:
 {context_text}
 {few_shot_section}
+**출력 형식 지침 (중요)**:
+1. 이전 답변이 있다면, 먼저 간단한 맞장구(acknowledgment)를 출력하세요.
+   - 예: "네 알겠습니다.", "좋습니다.", "잘 이해했습니다.", "수고했습니다." 등
+   - 맞장구는 1문장으로 간결하게
+2. 그 다음 새로운 주제에 대한 첫 질문을 생성하세요
+
 **첫 질문 생성 지침**:
 1. 해당 주제와 관련된 개방형 질문 생성
 2. 학생의 경험과 생각을 자유롭게 표현하게 유도
@@ -348,7 +371,7 @@ class InterviewService:
 - 독서: 도서가 가치관 및 탐구에 미친 영향
 - 봉사: 활동의 지속성과 배운 점
 
-첫 질문을 생성하세요:"""
+맞장구와 첫 질문을 생성하세요:"""
 
             # LLM 스트리밍 호출
             async for token in llm_service.astream_generate(prompt):

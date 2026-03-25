@@ -44,6 +44,7 @@ async def create_record(
         record = StudentRecord(
             user_id=current_user.user_id,
             title=request.title,
+            filename=request.filename,
             s3_key=request.s3Key,
             status="PENDING"
         )

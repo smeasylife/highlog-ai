@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Any
 class CreateRecordRequest(BaseModel):
     """생기부 등록 요청"""
     title: str = Field(..., description="생기부 제목")
+    filename: str = Field(..., description="원본 파일명")
     s3Key: str = Field(..., description="S3 객체 키")
 
 

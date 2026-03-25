@@ -26,6 +26,7 @@ class StudentRecord(Base):
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
+    filename = Column(String(255), nullable=False)  # 원본 파일명
     s3_key = Column(String(512), nullable=False)
     status = Column(String(20), default="PENDING")  # PENDING, ANALYZING, READY, FAILED
     created_at = Column(DateTime(timezone=True), server_default=func.now())
