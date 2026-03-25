@@ -238,7 +238,7 @@ class InterviewService:
             # InterviewData 검색
             db = SessionLocal()
             try:
-                few_shot_questions = self._retrieve_interview_questions(
+                few_shot_questions = await self._retrieve_interview_questions(
                     department=target_department,
                     sub_topic=current_sub_topic,
                     db=db
@@ -308,7 +308,7 @@ class InterviewService:
                 context_text = "\n\n".join(context_chunks)
 
                 # InterviewData 검색
-                few_shot_questions = self._retrieve_interview_questions(
+                few_shot_questions = await self._retrieve_interview_questions(
                     department=target_department,
                     sub_topic=new_topic,
                     db=db
@@ -375,7 +375,7 @@ class InterviewService:
         finally:
             db.close()
 
-    def _retrieve_interview_questions(
+    async def _retrieve_interview_questions(
         self,
         department: str,
         sub_topic: str,
@@ -385,7 +385,6 @@ class InterviewService:
         try:
             from app.models import InterviewData
             from sqlalchemy import text
-            import asyncio
             from google import genai
             from google.genai import types
             from config import settings
@@ -393,22 +392,12 @@ class InterviewService:
             # 쿼리 텍스트 생성
             query_text = f"{department} | {sub_topic}"
 
-            # 임베딩 생성
-            def run_embedding():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    return loop.run_until_complete(
-                        genai.Client(api_key=settings.google_api_key).aio.models.embed_content(
-                            model="gemini-embedding-001",
-                            contents=query_text,
-                            config=types.EmbedContentConfig(output_dimensionality=768)
-                        )
-                    )
-                finally:
-                    loop.close()
-
-            result = run_embedding()
+            # 임베딩 생성 (현재 이벤트 루프 사용)
+            result = await genai.Client(api_key=settings.google_api_key).aio.models.embed_content(
+                model="gemini-embedding-001",
+                contents=query_text,
+                config=types.EmbedContentConfig(output_dimensionality=768)
+            )
             query_embedding = result.embeddings[0].values
 
             # 벡터 검색
@@ -424,6 +413,9 @@ class InterviewService:
             questions = [row[0] for row in rows]
 
             logger.info(f"Retrieved {len(questions)} similar questions for '{query_text}'")
+            # 질문 내용 로그 출력
+            for idx, question in enumerate(questions, 1):
+                logger.info(f"  Question {idx}: {question}")
             return questions
 
         except Exception as e:
