@@ -131,7 +131,8 @@ class InterviewService:
         last_question: str,
         remaining_time: int,
         asked_sub_topics: List[str],
-        follow_up_count: int
+        follow_up_count: int,
+        current_sub_topic: str = ""
     ) -> str:
         """
         답변 분석 및 다음 액션 결정
@@ -143,18 +144,21 @@ class InterviewService:
             remaining_time: 남은 시간
             asked_sub_topics: 완료된 주제 리스트
             follow_up_count: 꼬리 질문 횟수
+            current_sub_topic: 현재 질문 중인 주제
 
         Returns:
             다음 액션 (follow_up, new_topic, wrap_up)
         """
         try:
-            # 1. 시간 부족하면 종료
-            if remaining_time < 30:
+            # 1. 대화한 주제가 4개 이상이면 종료 (완료된 주제만)
+            discussed_topic_count = len(asked_sub_topics)
+
+            if discussed_topic_count >= 4:
+                logger.info(f"Discussed {discussed_topic_count} topics, wrapping up")
                 return "wrap_up"
 
-            # 2. 남은 주제 확인
-            remaining_topics = [t for t in SUB_TOPICS if t not in asked_sub_topics]
-            if not remaining_topics:
+            # 2. 시간 부족하면 종료
+            if remaining_time < 30:
                 return "wrap_up"
 
             # 3. 꼬리 질문 2회 이상이면 다음 주제

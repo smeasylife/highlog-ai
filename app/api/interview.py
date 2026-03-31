@@ -17,7 +17,8 @@ from app.schemas import (
     StartInterviewRequest,
     StartInterviewResponse,
     SimpleChatRequest,
-    AudioInterviewResponse
+    AudioInterviewResponse,
+    DashboardResponse
 )
 from app.services.interview_service import interview_service, SUB_TOPICS
 from app.services.audio_service import audio_service
@@ -115,7 +116,7 @@ async def chat_text(
             last_question = logs[-1].get("question", "")
 
         async def generate():
-            nonlocal current_sub_topic, asked_sub_topics, follow_up_count, remaining_time, logs
+            nonlocal current_sub_topic, asked_sub_topics, follow_up_count, remaining_time, logs, last_question
 
             try:
                 # 남은 시간 먼저 차감
@@ -128,7 +129,8 @@ async def chat_text(
                     last_question=last_question,
                     remaining_time=remaining_time,
                     asked_sub_topics=asked_sub_topics,
-                    follow_up_count=follow_up_count
+                    follow_up_count=follow_up_count,
+                    current_sub_topic=current_sub_topic
                 )
 
                 # 4. 액션에 따라 질문 생성
@@ -180,71 +182,53 @@ async def chat_text(
                     # 새로운 주제 선택
                     remaining_topics = [t for t in SUB_TOPICS if t not in asked_sub_topics]
 
-                    if not remaining_topics:
-                        # 종료
-                        closing_message = "면접을 종료합니다. 수고하셨습니다."
-                        yield f"data: {json.dumps({'status': 'finished', 'report': {'message': closing_message}}, ensure_ascii=False)}\n\n"
+                    import random
+                    new_topic = random.choice(remaining_topics)
 
-                        # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
-                        logs[-1]["answer"] = request.answer
-                        logs[-1]["response_time"] = request.response_time
+                    # 새 주제 질문 생성 (토큰 스트리밍)
+                    question_buffer = []
+                    last_question = logs[-1]["question"] if logs else ""
+                    async for token in interview_service.generate_new_topic_question(
+                        record_id=session.record_id,
+                        new_topic=new_topic,
+                        target_department=session.target_department,
+                        last_question=last_question,
+                        last_answer=request.answer
+                    ):
+                        question_buffer.append(token)
+                        yield f"data: {json.dumps({'status': 'generating', 'token': token}, ensure_ascii=False)}\n\n"
 
-                        interview_service.update_session_state(
-                            session_id=session_id,
-                            asked_sub_topics=asked_sub_topics,
-                            current_sub_topic=current_sub_topic,
-                            follow_up_count=follow_up_count,
-                            remaining_time=max(0, remaining_time),
-                            interview_logs=logs
-                        )
-                    else:
-                        import random
-                        new_topic = random.choice(remaining_topics)
+                    # 질문 완료 메시지 (question 필드 없이)
+                    yield f"data: {json.dumps({'status': 'completed'}, ensure_ascii=False)}\n\n"
 
-                        # 새 주제 질문 생성 (토큰 스트리밍)
-                        question_buffer = []
-                        last_question = logs[-1]["question"] if logs else ""
-                        async for token in interview_service.generate_new_topic_question(
-                            record_id=session.record_id,
-                            new_topic=new_topic,
-                            target_department=session.target_department,
-                            last_question=last_question,
-                            last_answer=request.answer
-                        ):
-                            question_buffer.append(token)
-                            yield f"data: {json.dumps({'status': 'generating', 'token': token}, ensure_ascii=False)}\n\n"
+                    full_question = "".join(question_buffer)
+                    if not full_question.strip():
+                        full_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
 
-                        # 질문 완료 메시지 (question 필드 없이)
-                        yield f"data: {json.dumps({'status': 'completed'}, ensure_ascii=False)}\n\n"
+                    # 기존 마지막 로그의 답변 업데이트
+                    asked_sub_topics.append(current_sub_topic)
+                    current_sub_topic = new_topic
+                    follow_up_count = 0
+                    logs[-1]["answer"] = request.answer
+                    logs[-1]["response_time"] = request.response_time
 
-                        full_question = "".join(question_buffer)
-                        if not full_question.strip():
-                            full_question = "죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 말씀해 주시겠어요?"
+                    # 새로운 질문 append
+                    logs.append({
+                        "question": full_question,
+                        "answer": "",
+                        "response_time": 0,
+                        "sub_topic": new_topic
+                    })
 
-                        # 기존 마지막 로그의 답변 업데이트
-                        asked_sub_topics.append(current_sub_topic)
-                        current_sub_topic = new_topic
-                        follow_up_count = 0
-                        logs[-1]["answer"] = request.answer
-                        logs[-1]["response_time"] = request.response_time
-
-                        # 새로운 질문 append
-                        logs.append({
-                            "question": full_question,
-                            "answer": "",
-                            "response_time": 0,
-                            "sub_topic": new_topic
-                        })
-
-                        # 갱신된 상태를 DB에 저장
-                        interview_service.update_session_state(
-                            session_id=session_id,
-                            asked_sub_topics=asked_sub_topics,
-                            current_sub_topic=current_sub_topic,
-                            follow_up_count=follow_up_count,
-                            remaining_time=max(0, remaining_time),
-                            interview_logs=logs
-                        )
+                    # 갱신된 상태를 DB에 저장
+                    interview_service.update_session_state(
+                        session_id=session_id,
+                        asked_sub_topics=asked_sub_topics,
+                        current_sub_topic=current_sub_topic,
+                        follow_up_count=follow_up_count,
+                        remaining_time=max(0, remaining_time),
+                        interview_logs=logs
+                    )
 
                 elif action == "wrap_up":
                     # 종료
@@ -347,7 +331,8 @@ async def chat_audio(
             last_question=last_question,
             remaining_time=remaining_time,
             asked_sub_topics=asked_sub_topics,
-            follow_up_count=follow_up_count
+            follow_up_count=follow_up_count,
+            current_sub_topic=current_sub_topic
         )
         # 5. 액션에 따라 질문 생성
         next_question = ""
@@ -396,31 +381,6 @@ async def chat_audio(
         elif action == "new_topic":
             # 새로운 주제 선택
             remaining_topics = [t for t in SUB_TOPICS if t not in asked_sub_topics]
-
-            if not remaining_topics:
-                # 종료
-                closing_message = "면접을 종료합니다. 수고하셨습니다."
-
-                # 마지막 답변 업데이트 (status는 변경하지 않음, 분석 API에서 COMPLETED로 변경)
-                logs[-1]["answer"] = transcript
-                logs[-1]["response_time"] = response_time
-
-                interview_service.update_session_state(
-                    session_id=session_id,
-                    asked_sub_topics=asked_sub_topics,
-                    current_sub_topic=current_sub_topic,
-                    follow_up_count=follow_up_count,
-                    remaining_time=max(0, remaining_time),
-                    interview_logs=logs
-                )
-
-                return AudioInterviewResponse(
-                    transcript=transcript,
-                    next_question=closing_message,
-                    sub_topic=None,
-                    remaining_time=0,
-                    is_finished=False  # 남은 주제 없어도 종료 메시지만 전달
-                )
 
             import random
             new_topic = random.choice(remaining_topics)
@@ -662,3 +622,106 @@ async def analyze_interview_result(
         import traceback
         logger.error(f"Full traceback:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="면접 결과 분석 중 오류가 발생했습니다.")
+
+
+# ==================== 사용자 대시보드 ====================
+
+@router.get("/dashboard", response_model=DashboardResponse)
+async def get_dashboard(
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """
+    사용자 대시보드 정보를 반환합니다.
+
+    Returns:
+        - joined_at: 가입일
+        - scrapped_question_count: 스크랩한 질문 수
+        - this_week_interview_count: 이번 주 면접 횟수
+        - average_interview_duration: 최근 일주일 면접 시간 평균 (예: "9분 30초")
+    """
+    try:
+        from app.database import get_db
+        from app.models import User, InterviewSession, Question, QuestionSet, StudentRecord
+        from sqlalchemy import func, extract
+        from datetime import timedelta
+
+        db = next(get_db())
+
+        try:
+            # 1. 가입일 조회 (필요한 컬럼만 선택)
+            user = db.query(User.created_at).filter(User.id == current_user.user_id).first()
+            if not user:
+                raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+            joined_at = user.created_at.isoformat()
+
+            # 2. 스크랩한 질문 수 (question_sets -> student_records를 통해 user_id 연결)
+            from app.models import StudentRecord
+
+            scrapped_count = db.query(func.count(Question.id)).join(
+                QuestionSet, Question.set_id == QuestionSet.id
+            ).join(
+                StudentRecord, QuestionSet.record_id == StudentRecord.id
+            ).filter(
+                StudentRecord.user_id == current_user.user_id,
+                Question.is_bookmarked == True
+            ).scalar()
+
+            scrapped_count = scrapped_count or 0
+
+            # 3. 이번 주 면접 횟수 및 시간 (최근 7일 기준)
+            # PostgreSQL에서 이번 주 계산 (현재 날짜 기준 이번 주의 월요일부터)
+            # 한국 시간 기준으로 계산하기 위해 date_trunc 사용
+            week_start = func.date_trunc('week', func.now() - timedelta(days=0))
+
+            # 이번 주 면접 횟수
+            this_week_count = db.query(func.count(InterviewSession.id)).filter(
+                InterviewSession.user_id == current_user.user_id,
+                InterviewSession.started_at >= week_start,
+                InterviewSession.status == "COMPLETED"
+            ).scalar()
+
+            this_week_count = this_week_count or 0
+
+            # 4. 최근 일주일 면접 시간 평균 (초기 600초 - remaining_time으로 계산)
+            seven_days_ago = datetime.now() - timedelta(days=7)
+
+            # 완료된 면접 세션 조회
+            completed_sessions = db.query(InterviewSession.started_at, InterviewSession.remaining_time).filter(
+                InterviewSession.user_id == current_user.user_id,
+                InterviewSession.started_at >= seven_days_ago,
+                InterviewSession.status == "COMPLETED"
+            ).all()
+
+            if completed_sessions:
+                # 각 세션의 소요 시간 계산 (초기 600초 - remaining_time)
+                durations = [(600 - session.remaining_time) for session in completed_sessions if session.remaining_time is not None]
+                if durations:
+                    avg_duration = sum(durations) / len(durations)
+                    minutes = int(avg_duration // 60)
+                    seconds = int(avg_duration % 60)
+                    average_interview_duration = f"{minutes}분 {seconds}초"
+                else:
+                    average_interview_duration = "0분 0초"
+            else:
+                average_interview_duration = "0분 0초"
+
+            logger.info(f"Dashboard data retrieved for user {current_user.user_id}")
+
+            return DashboardResponse(
+                joined_at=joined_at,
+                scrapped_question_count=scrapped_count,
+                this_week_interview_count=this_week_count,
+                average_interview_duration=average_interview_duration
+            )
+
+        finally:
+            db.close()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving dashboard: {e}")
+        import traceback
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="대시보드 정보 조회 중 오류가 발생했습니다.")

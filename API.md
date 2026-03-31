@@ -266,6 +266,35 @@ response_time: 45
 
 ---
 
+### 4-3. 사용자 대시보드
+
+### GET /ai/dashboard
+
+로그인한 사용자의 대시보드 정보를 조회합니다.
+
+**Response:**
+```json
+{
+  "joined_at": "2025-03-15T00:00:00",
+  "scrapped_question_count": 24,
+  "this_week_interview_count": 3,
+  "average_interview_duration": "9분 30초"
+}
+```
+
+**Response Fields:**
+- `joined_at`: 가입일 (ISO 8601 형식)
+- `scrapped_question_count`: 스크랩한 질문 수
+- `this_week_interview_count`: 이번 주에 진행한 면접 횟수
+- `average_interview_duration`: 최근 일주일동안 면접을 진행한 시간의 평균 (한국어 형식)
+
+**DB 최적화:**
+- 필수 컬럼만 선택하여 조회
+- 날짜 범위 쿼리 인덱스 활용
+- 집계 함수로 한 번에 계산
+
+---
+
 ## 5. AI Service 워크플로우
 
 ### 처리 로직

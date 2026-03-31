@@ -46,4 +46,14 @@ curl -N -X POST "http://localhost:8000/ai/interview/chat/text/SESSION_ID_HERE" \
     "answer": "네, 저는 컴퓨터 공학에 관심을 갖게 되었습니다. 고등학교 때 알고리즘 수업을 들으면서 프로그래밍의 매력을 느꼈습니다.",
     "response_time": 15
   }'
-# 6. 생기부 목록 조회 (현재 미구현 - Spring Boot에서 조회 필요)
+
+# 6. 대시보드 조회 (테스트용 - 인증 불필요)
+curl -X GET "http://localhost:8000/ai/interview/test/dashboard/1" \
+  -H "Content-Type: application/json"
+
+# 7. 대시보드 조회 (실제 - 인증 필요)
+curl -X GET "http://localhost:8000/ai/interview/dashboard" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN_HERE" \
+  -H "Content-Type: application/json"
+
+# 8. 생기부 목록 조회 (현재 미구현 - Spring Boot에서 조회 필요)

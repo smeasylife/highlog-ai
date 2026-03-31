@@ -131,3 +131,13 @@ class InterviewAnalysisResponse(BaseModel):
     strength_tags: List[str] = Field(..., description="강점 태그 리스트")
     weakness_tags: List[str] = Field(..., description="약점 태그 리스트")
     detailed_analysis: List[DetailedAnalysisItem] = Field(..., description="상세 분석 리스트")
+
+
+# ========== Dashboard Schemas ==========
+
+class DashboardResponse(BaseModel):
+    """사용자 대시보드 응답"""
+    joined_at: str = Field(..., description="가입일 (ISO 8601 형식)")
+    scrapped_question_count: int = Field(..., description="스크랩한 질문 수", ge=0)
+    this_week_interview_count: int = Field(..., description="이번 주 면접 횟수", ge=0)
+    average_interview_duration: str = Field(..., description="최근 일주일 면접 시간 평균 (예: '9분 30초')")
