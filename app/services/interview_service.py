@@ -186,8 +186,11 @@ class InterviewService:
             return action
 
         except Exception as e:
-            logger.error(f"Error analyzing answer: {e}")
-            return "wrap_up"
+            error_msg = f"답변 분석 중 AI 응답 에러: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            logger.error(f"Full error details: {type(e).__name__}")
+            # 에러 발생 시 안전하게 다음 주제로 이동
+            return "new_topic"
 
     def _build_analysis_prompt(
         self,
@@ -284,6 +287,12 @@ A: {last_answer}
 2. "왜 그렇게 생각했나?", "구체적으로 어떤 결과였나?" 등의 패턴 활용
 3. 학생부 정보와 교차 검증하여 질문
 
+**⚠️ 데이터 끊김 처리 (중요)**:
+- 학생부 데이터가 중간에 끊길 수 있습니다.
+- 끊긴 부분이나 불완전한 문장은 **절대 추측하지 말고 건너뛰세요**.
+- **완전하고 명확한 데이터만 사용하여 질문을 생성하세요**.
+- 불확실한 내용으로 질문을 생성하지 마세요. 사용자 답변에만 집중하세요.
+
 답변에 대한 맞장구와 꼬리 질문을 생성하세요:"""
 
             # LLM 스트리밍 호출
@@ -291,8 +300,12 @@ A: {last_answer}
                 yield token
 
         except Exception as e:
-            logger.error(f"Error generating follow-up question: {e}")
-            yield "죄송합니다. 질문 생성 중 오류가 발생했습니다."
+            error_msg = f"꼬리 질문 생성 중 AI 응답 에러: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            logger.error(f"Full error details: {type(e).__name__}")
+            # 즉시 에러 메시지 반환 후 종료
+            yield "⚠️ 죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 시도해 주세요."
+            return  # 즉시 종료
 
     async def generate_new_topic_question(
         self,
@@ -365,6 +378,12 @@ A: {last_answer}
 2. 학생의 경험과 생각을 자유롭게 표현하게 유도
 3. 구체적인 사례를 요청하는 방식
 
+**⚠️ 데이터 끊김 처리 (중요)**:
+- 학생부 데이터가 중간에 끊길 수 있습니다.
+- 끊긴 부분이나 불완전한 문장은 **절대 추측하지 말고 건너뛰세요**.
+- **완전하고 명확한 데이터만 사용하여 질문을 생성하세요**.
+- 불확실한 내용으로 질문을 생성하지 마세요. 주제와 관련된 일반적인 질문으로 대체하세요.
+
 주제 가이드라인:
 - 출결: 지각/결석 패턴과 사유, 성실성
 - 성적: 전공 과목 성적 추이와 변화 이유
@@ -382,8 +401,12 @@ A: {last_answer}
                 yield token
 
         except Exception as e:
-            logger.error(f"Error generating new topic question: {e}")
-            yield "죄송합니다. 질문 생성 중 오류가 발생했습니다."
+            error_msg = f"새 주제 질문 생성 중 AI 응답 에러: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            logger.error(f"Full error details: {type(e).__name__}")
+            # 즉시 에러 메시지 반환 후 종료
+            yield "⚠️ 죄송합니다. 질문 생성 중 오류가 발생했습니다. 다시 시도해 주세요."
+            return  # 즉시 종료
 
     # ==================== 헬퍼 메서드 ====================
 
@@ -551,7 +574,13 @@ A: {last_answer}
             )
 
             # LLM 호출
-            response = await llm_service.acomplete_generate(prompt)
+            try:
+                response = await llm_service.acomplete_generate(prompt)
+            except Exception as e:
+                error_msg = f"AI 분석 응답 에러: {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                logger.error(f"Full error details: {type(e).__name__}")
+                raise ValueError(f"AI 분석 실패: {str(e)}")
 
             # JSON 파싱
             import json

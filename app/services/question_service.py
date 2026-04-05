@@ -397,6 +397,12 @@ class QuestionGenerationService:
 6. model_answer는 실제 답안처럼 여러 문장으로 구성되어도 좋습니다.
 7. evaluation_criteria 예시: STAR 기법 활용, 모범 답안에서 구체적인 사례를 제시함 등
 
+**⚠️ 데이터 끊김 처리 (중요)**:
+- 제공된 학생부 데이터가 중간에 끊길 수 있습니다.
+- 끊긴 부분이나 불완전한 문장은 **절대 추측하지 말고 건너뛰세요**.
+- **완전하고 명확한 데이터만 사용하여 질문을 생성하세요**.
+- 불확실한 내용으로 질문을 생성하지 마세요.
+
 **난이도 구분**:
 - 기본: 기본적인 질문
 - 심화: 깊이 있는 질문
@@ -497,7 +503,10 @@ class QuestionGenerationService:
             return questions
 
         except Exception as e:
-            logger.error(f"Error generating questions for {category}: {e}")
+            error_msg = f"AI 응답 에러 발생: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            logger.error(f"Full error details: {type(e).__name__}")
+            # 빈 리스트 반환 즉시 (상위에서 실패 처리)
             return []
 
 
