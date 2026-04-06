@@ -469,7 +469,7 @@ A: {last_answer}
             return questions
 
         except Exception as e:
-            logger.error(f"Error retrieving interview questions: {e}")
+            logger.error(f"Interview questions retrieval error: {str(e)}")
             return []
 
     # ==================== 면접 결과 분석 ====================
