@@ -499,14 +499,18 @@ A: {last_answer}
             interview_logs = session.interview_logs or []
             if not interview_logs:
                 logger.warning(f"No interview logs found for session: {session.session_id}")
-                return self._get_empty_analysis(interview_logs)
+                return self._get_empty_analysis(interview_logs, session)
 
             # 2. final_report가 이미 있으면 반환
             if session.final_report:
                 logger.info(f"Using existing final_report for session: {session.session_id}")
                 return {
                     "interview_logs": interview_logs,
-                    **session.final_report
+                    **session.final_report,
+                    "target_university": session.target_university or "알 수 없음",
+                    "target_department": session.target_department or "알 수 없음",
+                    "mode": session.mode or "TEXT",
+                    "difficulty": session.difficulty or "Normal"
                 }
 
             # 3. AI 분석 실행
@@ -535,7 +539,11 @@ A: {last_answer}
 
             return {
                 "interview_logs": interview_logs,
-                **final_report
+                **final_report,
+                "target_university": session.target_university or "알 수 없음",
+                "target_department": session.target_department or "알 수 없음",
+                "mode": session.mode or "TEXT",
+                "difficulty": session.difficulty or "Normal"
             }
 
         except ValueError as e:
@@ -639,7 +647,7 @@ A: {last_answer}
                 if item_key not in item:
                     logger.warning(f"Missing key in detailed_analysis item: {item_key}")
 
-    def _get_empty_analysis(self, interview_logs: list) -> Dict[str, Any]:
+    def _get_empty_analysis(self, interview_logs: list, session: InterviewSession) -> Dict[str, Any]:
         """빈 분석 결과 반환 (면접 기록이 없는 경우)"""
         return {
             "interview_logs": interview_logs,
@@ -652,7 +660,11 @@ A: {last_answer}
             },
             "strength_tags": [],
             "weakness_tags": ["면접 기록 부족"],
-            "detailed_analysis": []
+            "detailed_analysis": [],
+            "target_university": session.target_university or "알 수 없음",
+            "target_department": session.target_department or "알 수 없음",
+            "mode": session.mode or "TEXT",
+            "difficulty": session.difficulty or "Normal"
         }
 
 

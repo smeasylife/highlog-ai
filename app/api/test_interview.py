@@ -290,7 +290,11 @@ async def analyze_test_interview_result(session_id: str):
             "scores": {...},
             "strength_tags": [...],
             "weakness_tags": [...],
-            "detailed_analysis": [...]
+            "detailed_analysis": [...],
+            "target_university": "...",
+            "target_department": "...",
+            "mode": "...",
+            "difficulty": "..."
         }
     """
     try:

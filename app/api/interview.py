@@ -570,7 +570,11 @@ async def analyze_interview_result(
             "scores": {...},
             "strength_tags": [...],
             "weakness_tags": [...],
-            "detailed_analysis": [...]
+            "detailed_analysis": [...],
+            "target_university": "...",
+            "target_department": "...",
+            "mode": "...",
+            "difficulty": "..."
         }
     """
     try:

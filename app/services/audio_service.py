@@ -26,16 +26,25 @@ class AudioService:
 
         # Google Cloud TTS 클라이언트
         try:
-            # Google Cloud credentials 확인
             credentials_path = settings.google_application_credentials
-            if credentials_path:
-                self.tts_client = texttospeech.TextToSpeechClient()
-                logger.info("Google Cloud TTS client initialized")
+
+            # 디버깅: 환경변수 값 확인
+            logger.info(f"🔑 TTS Credentials path from env: '{credentials_path}'")
+
+            if credentials_path and credentials_path.strip():
+                # 파일 존재 확인
+                if not os.path.exists(credentials_path):
+                    logger.error(f"❌ TTS credentials file NOT found: {credentials_path}")
+                    self.tts_client = None
+                else:
+                    # Google Cloud TTS는 자동으로 환경변수 GOOGLE_APPLICATION_CREDENTIALS를 읽음
+                    self.tts_client = texttospeech.TextToSpeechClient()
+                    logger.info("✅ TTS client initialized successfully")
             else:
                 self.tts_client = None
-                logger.warning("GOOGLE_APPLICATION_CREDENTIALS not set. TTS will be disabled.")
+                logger.warning("⚠️ TTS credentials path is empty. TTS disabled.")
         except Exception as e:
-            logger.error(f"Failed to initialize TTS client: {e}")
+            logger.error(f"❌ TTS initialization failed: {str(e)}")
             self.tts_client = None
 
     async def transcribe_audio(

@@ -131,6 +131,10 @@ class InterviewAnalysisResponse(BaseModel):
     strength_tags: List[str] = Field(..., description="강점 태그 리스트")
     weakness_tags: List[str] = Field(..., description="약점 태그 리스트")
     detailed_analysis: List[DetailedAnalysisItem] = Field(..., description="상세 분석 리스트")
+    target_university: str = Field(..., description="지원 대학교")
+    target_department: str = Field(..., description="지원 학과")
+    mode: str = Field(..., description="면접 모드 (TEXT, AUDIO)")
+    difficulty: str = Field(..., description="면접 난이도 (Easy, Normal, Hard)")
 
 
 # ========== Dashboard Schemas ==========
