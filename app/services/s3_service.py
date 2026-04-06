@@ -110,16 +110,17 @@ class S3Service:
             if not key or len(key.strip()) == 0:
                 raise ValueError("key is empty")
 
-            file_size = len(audio_bytes)
-            logger.info(f"📊 Uploading audio bytes: key={key}, size={file_size} bytes")
+            import io
+            file_stream = io.BytesIO(audio_bytes)
 
-            # put_object로 업로드 (Content-Length 명시적 전달)
-            self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=key,
-                Body=audio_bytes,
-                ContentLength=file_size,
-                ContentType='audio/mpeg'
+            logger.info(f"📊 Uploading audio bytes: key={key}, size={len(audio_bytes)} bytes")
+
+            # upload_fileobj로 업로드 (BytesIO로 감싸서 전달)
+            self.s3_client.upload_fileobj(
+                file_stream,
+                self.bucket_name,
+                key,
+                ExtraArgs={'ContentType': 'audio/mpeg'}
             )
 
             logger.info(f"Audio bytes uploaded to S3: {key} (size: {file_size} bytes)")
