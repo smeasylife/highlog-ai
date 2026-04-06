@@ -25,6 +25,10 @@ logs/
 .env.local
 .env.*.local
 
+# Google Credentials
+google-credentials.json
+google-credentials*.json
+
 # IDE
 .vscode/
 .idea/

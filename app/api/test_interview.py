@@ -375,7 +375,7 @@ async def chat_audio_test(
         logs = session.interview_logs or []
 
         # 3. STT (Speech-to-Text)
-        audio_bytes = io.BytesIO(await audio.read())
+        audio_bytes = await audio.read()  # bytes 반환
         transcript = await audio_service.transcribe_audio(
             audio_bytes=audio_bytes,
             mime_type=audio.content_type
