@@ -58,15 +58,21 @@ class S3Service:
             Presigned URL (유효 기간: 1시간)
         """
         try:
-            # S3에 업로드 (upload_file은 Content-Length를 자동으로 계산)
-            self.s3_client.upload_file(
-                file_path,
-                self.bucket_name,
-                key,
-                ExtraArgs={'ContentType': 'audio/mpeg'}
+            # 파일 내용을 메모리에 로드
+            with open(file_path, 'rb') as f:
+                audio_data = f.read()
+                file_size = len(audio_data)
+
+            # put_object로 업로드 (Content-Length 명시적 전달)
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=audio_data,
+                ContentLength=file_size,
+                ContentType='audio/mpeg'
             )
 
-            logger.info(f"Audio file uploaded to S3: {key}")
+            logger.info(f"Audio file uploaded to S3: {key} (size: {file_size} bytes)")
 
             # Presigned URL 생성 (1시간 유효)
             url = self.s3_client.generate_presigned_url(
@@ -79,6 +85,55 @@ class S3Service:
 
         except Exception as e:
             logger.error(f"Failed to upload audio file to S3: {e}")
+            raise
+
+    async def upload_audio_bytes(
+        self,
+        audio_bytes: bytes,
+        key: str
+    ) -> str:
+        """
+        오디오 바이트 데이터를 S3에 업로드하고 Presigned URL 반환
+        TTS 결과물을 바로 업로드할 때 사용
+
+        Args:
+            audio_bytes: 오디오 바이트 데이터
+            key: S3 객체 키
+
+        Returns:
+            Presigned URL (유효 기간: 1시간)
+        """
+        try:
+            if not audio_bytes or len(audio_bytes) == 0:
+                raise ValueError("audio_bytes is empty")
+
+            if not key or len(key.strip()) == 0:
+                raise ValueError("key is empty")
+
+            file_size = len(audio_bytes)
+
+            # put_object로 업로드 (Content-Length 명시적 전달)
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=audio_bytes,
+                ContentLength=file_size,
+                ContentType='audio/mpeg'
+            )
+
+            logger.info(f"Audio bytes uploaded to S3: {key} (size: {file_size} bytes)")
+
+            # Presigned URL 생성 (1시간 유효)
+            url = self.s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self.bucket_name, 'Key': key},
+                ExpiresIn=3600  # 1시간
+            )
+
+            return url
+
+        except Exception as e:
+            logger.error(f"Failed to upload audio bytes to S3: {e}")
             raise
 
 

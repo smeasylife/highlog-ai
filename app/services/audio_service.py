@@ -6,12 +6,12 @@ TTS: Google Cloud Text-to-Speech
 import logging
 import io
 import os
+import uuid
 from typing import Optional
 from google import genai
 from google.genai import types as genai_types
 from google.cloud import texttospeech
 from config import settings
-import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +128,7 @@ class AudioService:
     async def text_to_speech(
         self,
         text: str,
+        user_id: str,
         language_code: str = "ko-KR",
         voice_name: Optional[str] = None
     ) -> Optional[str]:
@@ -136,6 +137,7 @@ class AudioService:
 
         Args:
             text: 변환할 텍스트
+            user_id: 사용자 ID (파일 이름에 포함)
             language_code: 언어 코드 (기본: 한국어)
             voice_name: 음성 이름 (None이면 기본 음성 사용)
 
@@ -145,6 +147,10 @@ class AudioService:
         try:
             if not self.tts_client:
                 logger.warning("TTS client not initialized")
+                return None
+
+            if not text or len(text.strip()) == 0:
+                logger.warning("Empty text provided for TTS")
                 return None
 
             logger.info(f"Converting text to speech: {len(text)} characters")
@@ -175,27 +181,21 @@ class AudioService:
                 audio_config=audio_config
             )
 
-            # 임시 파일로 저장
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-                temp_file.write(response.audio_content)
-                temp_file_path = temp_file.name
+            if not response.audio_content or len(response.audio_content) == 0:
+                logger.error("TTS response audio_content is empty")
+                return None
 
-            logger.info(f"TTS audio saved to temporary file: {temp_file_path}")
+            logger.info(f"TTS audio generated: {len(response.audio_content)} bytes")
 
-            # S3에 업로드
+            # S3에 업로드 (bytes를 직접 전달)
             from app.services.s3_service import s3_service
 
-            file_key = f"interview_audio/{os.path.basename(temp_file_path)}.mp3"
+            file_key = f"interview_audio/{user_id}_{uuid.uuid4()}.mp3"
 
-            # 파일을 S3에 업로드
-            with open(temp_file_path, "rb") as f:
-                audio_url = await s3_service.upload_audio_file(
-                    file_path=temp_file_path,
-                    key=file_key
-                )
-
-            # 임시 파일 삭제
-            os.unlink(temp_file_path)
+            audio_url = await s3_service.upload_audio_bytes(
+                audio_bytes=response.audio_content,
+                key=file_key
+            )
 
             logger.info(f"TTS audio uploaded to S3: {audio_url}")
             return audio_url

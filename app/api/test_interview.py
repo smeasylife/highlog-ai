@@ -530,6 +530,7 @@ async def chat_audio_test(
             try:
                 audio_url = await audio_service.text_to_speech(
                     text=next_question,
+                    user_id=str(session.user_id),
                     language_code="ko-KR"
                 )
                 logger.info(f"[TEST] TTS audio URL generated: {audio_url}")
