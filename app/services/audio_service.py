@@ -54,16 +54,31 @@ class AudioService:
             변환된 텍스트
         """
         try:
-            logger.info(f"Transcribing audio ({len(audio_bytes)} bytes, {mime_type})")
+            # 1. 오디오 파일 검증
+            if not audio_bytes or len(audio_bytes) == 0:
+                logger.error("❌ STT Error: Audio file is empty (0 bytes)")
+                return ""
 
-            # Gemini Part 생성
-            audio_part = genai_types.Part.from_bytes(
-                data=audio_bytes,
-                mime_type=mime_type
-            )
+            if len(audio_bytes) < 100:
+                logger.error(f"❌ STT Error: Audio file too small ({len(audio_bytes)} bytes), possibly corrupted")
+                return ""
 
-            # STT 요청
+            logger.info(f"🎤 Starting STT: {len(audio_bytes)} bytes, mime_type={mime_type}")
+
+            # 2. Gemini Part 생성
+            try:
+                audio_part = genai_types.Part.from_bytes(
+                    data=audio_bytes,
+                    mime_type=mime_type
+                )
+            except Exception as e:
+                logger.error(f"❌ STT Error: Failed to create audio part - {e}")
+                return ""
+
+            # 3. STT 요청
             prompt = "이 오디오는 면접 답변입니다. 내용을 그대로 텍스트로 변환해주세요."
+
+            logger.info("📤 Sending STT request to Gemini API...")
 
             response = self.genai_client.models.generate_content(
                 model=self.stt_model,
@@ -73,13 +88,32 @@ class AudioService:
                 }
             )
 
+            # 4. 응답 검증
+            if not response or not hasattr(response, 'text'):
+                logger.error("❌ STT Error: No response or response.text from Gemini API")
+                return ""
+
             text = response.text.strip()
-            logger.info(f"Transcription complete: {len(text)} characters")
+
+            if not text:
+                logger.error("❌ STT Error: Gemini returned empty text")
+                return ""
+
+            logger.info(f"✅ STT Success: {len(text)} characters transcribed")
+            logger.info(f"📝 Transcript preview: {text[:100]}...")
 
             return text
 
         except Exception as e:
-            logger.error(f"STT failed: {e}")
+            error_type = type(e).__name__
+            error_detail = str(e)
+            logger.error(f"❌ STT Error [{error_type}]: {error_detail}")
+            logger.error(f"📊 Audio info: {len(audio_bytes) if audio_bytes else 0} bytes, mime_type={mime_type}")
+
+            # Google API 관련 에러인 경우 추가 정보
+            if "google" in error_type.lower() or "genai" in error_type.lower():
+                logger.error(f"🔑 Google API Error - Check API key and quota")
+
             return ""
 
     async def text_to_speech(
