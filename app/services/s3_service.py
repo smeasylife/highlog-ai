@@ -2,6 +2,8 @@ import boto3
 from botocore.exceptions import ClientError
 from config import settings
 import logging
+import tempfile
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +96,7 @@ class S3Service:
     ) -> str:
         """
         오디오 바이트 데이터를 S3에 업로드하고 Presigned URL 반환
-        TTS 결과물을 바로 업로드할 때 사용
+        OCI 호환성을 위해 임시 파일 사용
 
         Args:
             audio_bytes: 오디오 바이트 데이터
@@ -103,6 +105,7 @@ class S3Service:
         Returns:
             Presigned URL (유효 기간: 1시간)
         """
+        temp_file_path = None
         try:
             if not audio_bytes or len(audio_bytes) == 0:
                 raise ValueError("audio_bytes is empty")
@@ -110,24 +113,42 @@ class S3Service:
             if not key or len(key.strip()) == 0:
                 raise ValueError("key is empty")
 
-            import io
-            # bytes 데이터 직접 추출
-            if isinstance(audio_bytes, io.BytesIO):
-                body = audio_bytes.getvalue()
-            else:
-                body = audio_bytes
+            # 1. 임시 파일 생성 (delete=False로 설정하여 자동 삭제 방지 - 업로드 후 수동 삭제)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+                temp_file.write(audio_bytes)
+                temp_file_path = temp_file.name
+                # 여기서 with 블록이 끝나면서 파일 쓰기가 완료(Flush)됩니다.
 
-            size = len(body)
-            logger.info(f"🚀 OCI Uploading: key={key}, size={size} bytes")
+            logger.info(f"🚀 OCI Uploading via TempFile: key={key}, size={len(audio_bytes)} bytes")
 
-            # put_object를 사용하여 '직접' 전송
-            self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=key,
-                Body=body,  # 스트림이 아닌 실제 bytes 데이터
-                ContentLength=size,  # 오라클이 요구하는 핵심 헤더
-                ContentType='audio/mpeg'
+            # 2. 실제 파일 경로를 넘겨서 업로드 (OCI에서 가장 안정적)
+            self.s3_client.upload_file(
+                temp_file_path,
+                self.bucket_name,
+                key,
+                ExtraArgs={'ContentType': 'audio/mpeg'}
             )
+
+            # 3. 업로드 성공 후 임시 파일 즉시 삭제 (서버 용량 관리)
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+
+            # 4. Presigned URL 생성
+            url = self.s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self.bucket_name, 'Key': key},
+                ExpiresIn=3600
+            )
+
+            logger.info(f"✅ OCI Upload success: {key}")
+            return url
+
+        except Exception as e:
+            # 에러 발생 시에도 임시 파일이 남아있다면 삭제 시도
+            if temp_file_path and os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+            logger.error(f"Failed to upload audio to OCI: {str(e)}")
+            raise
 
             logger.info(f"Audio bytes uploaded to S3: {key} (size: {file_size} bytes)")
 
