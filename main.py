@@ -5,19 +5,22 @@ from app.api import records, interview, test_records, test_interview
 from app.database import engine, Base
 import logging
 
-# 로그 레벨 설정 (DEBUG로 모든 로그 출력)
+# 로그 레벨 설정 (INFO: 중요 로그만 출력)
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s | %(levelname)-8s | %(name)s:%(lineno)d | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# SQLAlchemy 불필요한 SQL 로그 숨기기 (BEGIN, COMMIT, SELECT 등)
-# INSERT 같은 중요한 쿼리는 INFO 레벨로 표시
+# 불필요한 디버그 로그 숨기기
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARN)
 logging.getLogger("sqlalchemy.pool").setLevel(logging.WARN)
 logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARN)
 logging.getLogger("sqlalchemy.orm").setLevel(logging.WARN)
+
+# boto3/botocore 디버그 로그 숨기기
+logging.getLogger("botocore").setLevel(logging.WARNING)
+logging.getLogger("boto3").setLevel(logging.WARNING)
 
 # FastAPI 앱 생성
 app = FastAPI(
