@@ -111,6 +111,7 @@ class S3Service:
                 raise ValueError("key is empty")
 
             file_size = len(audio_bytes)
+            logger.info(f"📊 Uploading audio bytes: key={key}, size={file_size} bytes")
 
             # put_object로 업로드 (Content-Length 명시적 전달)
             self.s3_client.put_object(
