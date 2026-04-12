@@ -29,22 +29,35 @@ class AudioService:
             credentials_path = settings.google_application_credentials
 
             # 디버깅: 환경변수 값 확인
-            logger.info(f"🔑 TTS Credentials path from env: '{credentials_path}'")
+            logger.info(f"🔑 [TTS Init] Credentials path from settings: '{credentials_path}'")
+            logger.info(f"🔑 [TTS Init] Credentials type: {type(credentials_path)}")
+            logger.info(f"🔑 [TTS Init] Credentials length: {len(credentials_path) if credentials_path else 0}")
+
+            # 환경변수 직접 확인
+            import os as os_module
+            env_creds = os_module.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+            logger.info(f"🔑 [TTS Init] GOOGLE_APPLICATION_CREDENTIALS env var: '{env_creds}'")
 
             if credentials_path and credentials_path.strip():
                 # 파일 존재 확인
                 if not os.path.exists(credentials_path):
-                    logger.error(f"❌ TTS credentials file NOT found: {credentials_path}")
+                    logger.error(f"❌ [TTS Init] Credentials file NOT found at path: {credentials_path}")
+                    logger.error(f"❌ [TTS Init] Current working directory: {os.getcwd()}")
+                    logger.error(f"❌ [TTS Init] File exists check failed. TTS will be disabled.")
                     self.tts_client = None
                 else:
                     # Google Cloud TTS는 자동으로 환경변수 GOOGLE_APPLICATION_CREDENTIALS를 읽음
+                    logger.info(f"✅ [TTS Init] Credentials file exists, initializing TTS client...")
                     self.tts_client = texttospeech.TextToSpeechClient()
-                    logger.info("✅ TTS client initialized successfully")
+                    logger.info("✅ [TTS Init] TTS client initialized successfully")
             else:
                 self.tts_client = None
-                logger.warning("⚠️ TTS credentials path is empty. TTS disabled.")
+                logger.warning("⚠️ [TTS Init] Credentials path is empty or None. TTS disabled.")
+                logger.warning("⚠️ [TTS Init] Set GOOGLE_APPLICATION_CREDENTIALS environment variable to enable TTS.")
         except Exception as e:
-            logger.error(f"❌ TTS initialization failed: {str(e)}")
+            logger.error(f"❌ [TTS Init] Exception during TTS client initialization: {str(e)}")
+            logger.error(f"❌ [TTS Init] Exception type: {type(e).__name__}")
+            logger.error(f"❌ [TTS Init] TTS will be disabled.")
             self.tts_client = None
 
     async def transcribe_audio(
@@ -146,7 +159,9 @@ class AudioService:
         """
         try:
             if not self.tts_client:
-                logger.warning("TTS client not initialized")
+                logger.warning("⚠️ [TTS] TTS client not initialized. Check initialization logs for root cause.")
+                logger.warning("⚠️ [TTS] Possible causes: GOOGLE_APPLICATION_CREDENTIALS not set, file not found, or initialization error.")
+                logger.warning("⚠️ [TTS] Returning None for TTS request.")
                 return None
 
             if not text or len(text.strip()) == 0:
@@ -206,4 +221,7 @@ class AudioService:
 
 
 
+# 싱글톤 인스턴스 생성 (모듈 로드 시)
+logger.info("🎤 [AudioService] Creating singleton audio_service instance...")
 audio_service = AudioService()
+logger.info(f"🎤 [AudioService] audio_service created. TTS client status: {'✅ initialized' if audio_service.tts_client else '❌ NOT initialized'}")
