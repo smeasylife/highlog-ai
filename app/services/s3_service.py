@@ -2,7 +2,6 @@ import boto3
 from botocore.exceptions import ClientError
 from config import settings
 import logging
-import tempfile
 import os
 
 logger = logging.getLogger(__name__)
@@ -44,51 +43,6 @@ class S3Service:
             logger.error(f"Failed to get file stream from S3: {e}")
             return None
     
-    async def upload_audio_file(
-        self,
-        file_path: str,
-        key: str
-    ) -> str:
-        """
-        오디오 파일을 S3에 업로드하고 Presigned URL 반환
-
-        Args:
-            file_path: 로컬 파일 경로
-            key: S3 객체 키
-
-        Returns:
-            Presigned URL (유효 기간: 1시간)
-        """
-        try:
-            # 파일 내용을 메모리에 로드
-            with open(file_path, 'rb') as f:
-                audio_data = f.read()
-                file_size = len(audio_data)
-
-            # put_object로 업로드 (Content-Length 명시적 전달)
-            self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=key,
-                Body=audio_data,
-                ContentLength=file_size,
-                ContentType='audio/mpeg'
-            )
-
-            logger.info(f"Audio file uploaded to S3: {key} (size: {file_size} bytes)")
-
-            # Presigned URL 생성 (1시간 유효)
-            url = self.s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': self.bucket_name, 'Key': key},
-                ExpiresIn=3600  # 1시간
-            )
-
-            return url
-
-        except Exception as e:
-            logger.error(f"Failed to upload audio file to S3: {e}")
-            raise
-
     async def upload_audio_bytes(
         self,
         audio_bytes: bytes,
@@ -96,7 +50,7 @@ class S3Service:
     ) -> str:
         """
         오디오 바이트 데이터를 S3에 업로드하고 Presigned URL 반환
-        OCI 호환성을 위해 임시 파일 사용
+        put_object를 사용하여 Content-Length를 명시적으로 전달 (OCI 호환성)
 
         Args:
             audio_bytes: 오디오 바이트 데이터
@@ -105,7 +59,6 @@ class S3Service:
         Returns:
             Presigned URL (유효 기간: 1시간)
         """
-        temp_file_path = None
         try:
             if not audio_bytes or len(audio_bytes) == 0:
                 raise ValueError("audio_bytes is empty")
@@ -113,56 +66,32 @@ class S3Service:
             if not key or len(key.strip()) == 0:
                 raise ValueError("key is empty")
 
-            # 1. 임시 파일 생성 (delete=False로 설정하여 자동 삭제 방지 - 업로드 후 수동 삭제)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-                temp_file.write(audio_bytes)
-                temp_file_path = temp_file.name
-                # 여기서 with 블록이 끝나면서 파일 쓰기가 완료(Flush)됩니다.
+            file_size = len(audio_bytes)
+            logger.info(f"🚀 Uploading audio bytes via put_object: key={key}, size={file_size} bytes")
 
-            logger.info(f"🚀 OCI Uploading via TempFile: key={key}, size={len(audio_bytes)} bytes")
-
-            # 2. 실제 파일 경로를 넘겨서 업로드 (OCI에서 가장 안정적)
-            self.s3_client.upload_file(
-                temp_file_path,
-                self.bucket_name,
-                key,
-                ExtraArgs={'ContentType': 'audio/mpeg'}
+            # put_object로 업로드 (Content-Length 명시적 전달 - OCI 필수)
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=key,
+                Body=audio_bytes,
+                ContentLength=file_size,
+                ContentType='audio/mpeg'
             )
 
-            # 3. 업로드 성공 후 임시 파일 즉시 삭제 (서버 용량 관리)
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
+            logger.info(f"✅ Upload success: {key} ({file_size} bytes)")
 
-            # 4. Presigned URL 생성
+            # Presigned URL 생성 (1시간 유효)
             url = self.s3_client.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': self.bucket_name, 'Key': key},
                 ExpiresIn=3600
             )
 
-            logger.info(f"✅ OCI Upload success: {key}")
             return url
 
         except Exception as e:
-            # 에러 발생 시에도 임시 파일이 남아있다면 삭제 시도
-            if temp_file_path and os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
-            logger.error(f"Failed to upload audio to OCI: {str(e)}")
-            raise
-
-            logger.info(f"Audio bytes uploaded to S3: {key} (size: {file_size} bytes)")
-
-            # Presigned URL 생성 (1시간 유효)
-            url = self.s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': self.bucket_name, 'Key': key},
-                ExpiresIn=3600  # 1시간
-            )
-
-            return url
-
-        except Exception as e:
-            logger.error(f"Failed to upload audio bytes to S3: {e}")
+            logger.error(f"Failed to upload audio bytes: {str(e)}")
+            logger.error(f"Upload details - key={key}, size={len(audio_bytes) if audio_bytes else 0}")
             raise
 
 
