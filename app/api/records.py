@@ -21,6 +21,39 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ==================== 헬퍼 함수 ====================
+
+def _normalize_difficulty(difficulty: str) -> str:
+    """
+    difficulty 값 정제 (슬래시 제거, 유효한 값으로 변환)
+
+    Args:
+        difficulty: LLM이 반환한 원본 difficulty 값
+
+    Returns:
+        정제된 difficulty 값 ('기본', '압박', '심화' 중 하나)
+    """
+    if not difficulty:
+        return '기본'
+
+    # 슬래시로 분리된 경우 첫 번째 값 사용
+    if '/' in difficulty:
+        difficulty = difficulty.split('/')[0]
+
+    # 유효한 difficulty 값 매핑
+    valid_map = {
+        '기본': '기본',
+        'BASIC': '기본',
+        'basic': '기본',
+        '심화': '심화',
+        '압박': '압박',
+        '심화/압박': '심화',  # 슬래시 경우 첫 번째
+    }
+
+    # 매핑된 값 반환, 없으면 '기본' 기본값
+    return valid_map.get(difficulty.lower().strip(), '기본')
+
+
 async def send_progress(progress: int, queue: asyncio.Queue):
     """진행률을 큐에 전송하는 헬퍼 함수"""
     await queue.put(progress)
@@ -293,11 +326,15 @@ async def question_generation_stream(
 
         if questions_to_save:
             for q in questions_to_save:
+                # difficulty 값 정제 (슬래시 제거, 유효한 값으로 변환)
+                raw_difficulty = q.get('difficulty', '기본')
+                clean_difficulty = _normalize_difficulty(raw_difficulty)
+
                 question = Question(
                     set_id=question_set.id,  # question_set의 ID 참조
                     category=q.get('category', '기본'),
                     content=q['content'],
-                    difficulty=q.get('difficulty', 'BASIC'),
+                    difficulty=clean_difficulty,
                     purpose=q.get('purpose'),
                     answer_points=q.get('answer_points'),
                     model_answer=q.get('model_answer'),

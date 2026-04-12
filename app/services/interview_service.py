@@ -173,8 +173,8 @@ class InterviewService:
                 response_time=response_time
             )
 
-            # llm_service 사용
-            result = await llm_service.acomplete_generate(prompt)
+            # llm_service 사용 (타임아웃 60초)
+            result = await llm_service.acomplete_generate(prompt, timeout=60)
             action = result.strip().lower()
 
             # 유효성 검사
@@ -295,9 +295,17 @@ A: {last_answer}
 
 답변에 대한 맞장구와 꼬리 질문을 생성하세요:"""
 
-            # LLM 스트리밍 호출
-            async for token in llm_service.astream_generate(prompt):
-                yield token
+            # LLM 스트리밍 호출 (타임아웃 60초)
+            try:
+                async for token in llm_service.astream_generate(prompt, timeout=60):
+                    yield token
+            except Exception as llm_error:
+                # 502 또는 타임아웃 오류 즉시 전파
+                error_msg = str(llm_error)
+                if "502" in error_msg or "timeout" in error_msg.lower():
+                    logger.error(f"❌ Follow-up question generation failed (502/timeout): {error_msg}")
+                    raise
+                raise
 
         except Exception as e:
             error_msg = f"꼬리 질문 생성 중 AI 응답 에러: {str(e)}"
@@ -396,9 +404,17 @@ A: {last_answer}
 
 맞장구와 첫 질문을 생성하세요:"""
 
-            # LLM 스트리밍 호출
-            async for token in llm_service.astream_generate(prompt):
-                yield token
+            # LLM 스트리밍 호출 (타임아웃 60초)
+            try:
+                async for token in llm_service.astream_generate(prompt, timeout=60):
+                    yield token
+            except Exception as llm_error:
+                # 502 또는 타임아웃 오류 즉시 전파
+                error_msg = str(llm_error)
+                if "502" in error_msg or "timeout" in error_msg.lower():
+                    logger.error(f"❌ New topic question generation failed (502/timeout): {error_msg}")
+                    raise
+                raise
 
         except Exception as e:
             error_msg = f"새 주제 질문 생성 중 AI 응답 에러: {str(e)}"
@@ -432,44 +448,62 @@ A: {last_answer}
         db
     ) -> List[str]:
         """InterviewData에서 유사 질문 검색"""
+        query_text = f"{department} | {sub_topic}"
+        logger.info(f"🔍 [InterviewData] Searching for: {query_text}")
+
         try:
             from app.models import InterviewData
             from sqlalchemy import text
-            from google import genai
-            from google.genai import types
-            from config import settings
+            import asyncio
+            import traceback
 
-            # 쿼리 텍스트 생성
-            query_text = f"{department} | {sub_topic}"
+            # 1. 임베딩 생성 (vector_service 재사용, 타임아웃 10초)
+            logger.info(f"  📝 [InterviewData] Generating embedding...")
+            try:
+                query_embedding = await asyncio.wait_for(
+                    vector_service._embed_text(query_text),
+                    timeout=10.0
+                )
+                logger.info(f"  ✅ [InterviewData] Embedding generated successfully (768 dimensions)")
+            except asyncio.TimeoutError:
+                logger.error(f"  ❌ [InterviewData] Embedding timeout (10s)")
+                return []
+            except Exception as embed_error:
+                logger.error(f"  ❌ [InterviewData] Embedding failed: {str(embed_error)}")
+                logger.error(f"  Error type: {type(embed_error).__name__}")
+                logger.error(f"  Traceback:\n{traceback.format_exc()}")
+                return []
 
-            # 임베딩 생성 (현재 이벤트 루프 사용)
-            result = await genai.Client(api_key=settings.google_api_key).aio.models.embed_content(
-                model="gemini-embedding-001",
-                contents=query_text,
-                config=types.EmbedContentConfig(output_dimensionality=768)
-            )
-            query_embedding = result.embeddings[0].values
+            # 2. 벡터 검색
+            logger.info(f"  🔎 [InterviewData] Searching vector DB...")
+            try:
+                query = text("""
+                    SELECT question
+                    FROM interview_data
+                    ORDER BY embedding <=> cast(:embedding as vector)
+                    LIMIT 10
+                """)
 
-            # 벡터 검색
-            query = text("""
-                SELECT question
-                FROM interview_data
-                ORDER BY embedding <=> cast(:embedding as vector)
-                LIMIT 10
-            """)
+                embedding_str = str(query_embedding)
+                rows = db.execute(query, {"embedding": embedding_str}).fetchall()
+                questions = [row[0] for row in rows]
 
-            embedding_str = str(query_embedding)
-            rows = db.execute(query, {"embedding": embedding_str}).fetchall()
-            questions = [row[0] for row in rows]
+                logger.info(f"  ✅ [InterviewData] Retrieved {len(questions)} questions")
+                for idx, question in enumerate(questions, 1):
+                    logger.info(f"    Q{idx}: {question}")
+                return questions
 
-            logger.info(f"Retrieved {len(questions)} similar questions for '{query_text}'")
-            # 질문 내용 로그 출력
-            for idx, question in enumerate(questions, 1):
-                logger.info(f"  Question {idx}: {question}")
-            return questions
+            except Exception as db_error:
+                logger.error(f"  ❌ [InterviewData] Vector DB search failed: {str(db_error)}")
+                logger.error(f"  Error type: {type(db_error).__name__}")
+                logger.error(f"  Traceback:\n{traceback.format_exc()}")
+                return []
 
         except Exception as e:
-            logger.error(f"Interview questions retrieval error: {str(e)}")
+            logger.error(f"❌ [InterviewData] Search failed for '{query_text}'")
+            logger.error(f"  Error type: {type(e).__name__}")
+            logger.error(f"  Error message: {str(e)}")
+            logger.error(f"  Full traceback:\n{traceback.format_exc()}")
             return []
 
     # ==================== 면접 결과 분석 ====================
@@ -581,9 +615,9 @@ A: {last_answer}
                 difficulty=difficulty
             )
 
-            # LLM 호출
+            # LLM 호출 (타임아웃 30초)
             try:
-                response = await llm_service.acomplete_generate(prompt)
+                response = await llm_service.acomplete_generate(prompt, timeout=30)
             except Exception as e:
                 error_msg = f"AI 분석 응답 에러: {str(e)}"
                 logger.error(f"❌ {error_msg}")

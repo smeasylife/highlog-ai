@@ -1,4 +1,4 @@
-"""LLM 호출 서비스 - Google Gemini, OpenAI GPT 지원"""
+"""LLM 호출 서비스 - Google Gemini 폴백 메커니즘 지원"""
 
 from typing import AsyncIterator, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -6,27 +6,27 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from config import settings
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 
 class LLMService:
-    """LLM 호출 서비스"""
+    """LLM 호출 서비스 - Gemini 폴백 메커니즘 지원"""
+
+    # 폴백 모델 리스트 (1차 → 2차 → 3차)
+    FALLBACK_MODELS = [
+        "gemini-2.5-flash",              # 1차: 기본 모델 (가장 성능 좋음)
+        "gemini-3-flash-preview",        # 2차: 최신 실험 모델
+        "gemini-3.1-flash-lite-preview",  # 3차: 가벼운 실험 모델
+    ]
 
     def __init__(
         self,
-        provider: str = "gemini",  # "gemini" or "openai"
+        provider: str = "gemini",
         model: Optional[str] = None,
         temperature: float = 0.7
     ):
-        """
-        LLM 서비스 초기화
-
-        Args:
-            provider: LLM 제공자 ("gemini", "openai")
-            model: 모델 이름 (None이면 기본값 사용)
-            temperature: 생성 온도
-        """
         self.provider = provider
         self.temperature = temperature
 
@@ -38,59 +38,126 @@ class LLMService:
 
         self.model = model or default_models.get(provider, "gemini-2.5-flash")
 
-        # LLM 인스턴스 생성
+        # 폴백 모델 리스트 (Gemini만 지원)
         if provider == "gemini":
-            self.llm = ChatGoogleGenerativeAI(
-                model=self.model,
+            self.fallback_models = self.FALLBACK_MODELS
+        else:
+            self.fallback_models = [self.model]
+
+        logger.info(f"LLM Service initialized: {provider} / {self.model} (fallback: {self.fallback_models})")
+
+    def _create_llm_instance(self, model: str):
+        """LLM 인스턴스 생성 (내부 헬퍼 메서드)"""
+        if self.provider == "gemini":
+            return ChatGoogleGenerativeAI(
+                model=model,
                 api_key=settings.google_api_key,
-                temperature=temperature,
+                temperature=self.temperature,
                 streaming=True
             )
-        elif provider == "openai":
-            self.llm = ChatOpenAI(
-                model=self.model,
+        elif self.provider == "openai":
+            return ChatOpenAI(
+                model=model,
                 api_key=getattr(settings, 'openai_api_key', None),
-                temperature=temperature,
+                temperature=self.temperature,
                 streaming=True
             )
         else:
-            raise ValueError(f"Unsupported provider: {provider}")
+            raise ValueError(f"Unsupported provider: {self.provider}")
 
-        logger.info(f"LLM Service initialized: {provider} / {self.model}")
-
-    async def astream_generate(self, prompt: str, system_prompt: Optional[str] = None) -> AsyncIterator[str]:
+    async def astream_generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        timeout: int = 60
+    ) -> AsyncIterator[str]:
         """
-        비동기 스트리밍 생성
+        비동기 스트리밍 생성 (폴백 메커니즘 포함)
 
         Args:
             prompt: 사용자 프롬프트
             system_prompt: 시스템 프롬프트 (선택)
+            timeout: 타임아웃 (초, 기본 60초)
 
         Yields:
             토큰 단위 텍스트
+
+        Raises:
+            TimeoutError: 모든 모델 호출이 타임아웃된 경우
+            Exception: 모든 모델 호출 실패 경우
         """
         messages = []
         if system_prompt:
             messages.append(SystemMessage(content=system_prompt))
         messages.append(HumanMessage(content=prompt))
 
-        async for chunk in self.llm.astream(messages):
-            if hasattr(chunk, 'content') and chunk.content:
-                yield chunk.content
+        # 폴백 메커니즘: 각 모델 순차적으로 시도
+        last_error = None
 
-    async def acomplete_generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        for attempt_idx, model_name in enumerate(self.fallback_models, 1):
+            try:
+                logger.info(f"🔄 [LLM Fallback] Attempt {attempt_idx}/{len(self.fallback_models)}: {model_name}")
+
+                # LLM 인스턴스 생성
+                llm = self._create_llm_instance(model_name)
+                stream = llm.astream(messages)
+
+                # 각 청크 가져오기에 타임아웃 설정
+                chunk_count = 0
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(stream.__anext__(), timeout=timeout)
+                        if hasattr(chunk, 'content') and chunk.content:
+                            chunk_count += 1
+                            yield chunk.content
+                    except StopAsyncIteration:
+                        # 스트림 정상 종료
+                        logger.info(f"✅ [LLM Fallback] Success with {model_name} ({chunk_count} tokens)")
+                        return  # 성공하면 함수 종료
+                    except asyncio.TimeoutError:
+                        error_msg = f"LLM 호출 타임아웃 ({timeout}초 초과)"
+                        logger.error(f"❌ [LLM Fallback] {model_name} timeout")
+                        raise TimeoutError(error_msg)
+
+            except (TimeoutError, Exception) as e:
+                last_error = e
+                error_type = type(e).__name__
+
+                # 마지막 모델이 아니면 다음 모델로 시도
+                if attempt_idx < len(self.fallback_models):
+                    logger.warning(f"⚠️ [LLM Fallback] {model_name} failed ({error_type}), trying next model...")
+                    await asyncio.sleep(0.5)  # 잠시 대기 후 재시도
+                else:
+                    # 마지막 모델도 실패하면 에러 전파
+                    logger.error(f"❌ [LLM Fallback] All models failed")
+                    if isinstance(e, TimeoutError):
+                        raise
+                    else:
+                        raise Exception(f"LLM 호출 실패 (모든 폴백 모델 실패): {str(e)}")
+
+    async def acomplete_generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        timeout: int = 60
+    ) -> str:
         """
-        비동기 전체 생성
+        비동기 전체 생성 (폴백 메커니즘 포함)
 
         Args:
             prompt: 사용자 프롬프트
             system_prompt: 시스템 프롬프트 (선택)
+            timeout: 타임아웃 (초, 기본 60초)
 
         Returns:
             전체 응답 텍스트
+
+        Raises:
+            TimeoutError: 모든 모델 호출이 타임아웃된 경우
+            Exception: 모든 모델 호출 실패 경우
         """
         full_response = ""
-        async for token in self.astream_generate(prompt, system_prompt):
+        async for token in self.astream_generate(prompt, system_prompt, timeout=timeout):
             full_response += token
         return full_response
 

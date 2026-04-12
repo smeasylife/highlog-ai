@@ -453,6 +453,20 @@ GET /ai/interview/analyze/{session_id}
 **Response**
 ```json
 {
+  "interview_logs": [
+    {
+      "question": "자기소개 부탁드립니다.",
+      "answer": "안녕하세요, 저는...",
+      "response_time": 45,
+      "sub_topic": ""
+    },
+    {
+      "question": "리더십 경험에 대해 말씀해주세요",
+      "answer": "동아리 부장으로서...",
+      "response_time": 60,
+      "sub_topic": "리더십"
+    }
+  ],
   "scores": {
     "전공적합성": 22,
     "인성": 18,
@@ -470,9 +484,24 @@ GET /ai/interview/analyze/{session_id}
       "improvement_point": "답변 속도를 높이세요.",
       "supplement_needed": null
     }
-  ]
+  ],
+  "target_university": "가천대학교",
+  "target_department": "컴퓨터공학과",
+  "mode": "TEXT",
+  "difficulty": "Normal"
 }
 ```
+
+**Response Fields:**
+- `interview_logs`: 면접 대화 기록 (질문, 답변, 소요 시간, 주제)
+- `scores`: 각 평가 항목별 점수
+- `strength_tags`: 강점 태그 리스트
+- `weakness_tags`: 약점 태그 리스트
+- `detailed_analysis`: 질문별 상세 분석
+- `target_university`: 지원 대학교
+- `target_department`: 지원 학과
+- `mode`: 면접 모드 (TEXT, AUDIO)
+- `difficulty`: 면접 난이도 (Easy, Normal, Hard)
 
 ---
 

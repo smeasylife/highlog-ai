@@ -260,9 +260,24 @@ response_time: 45
       "improvement_point": "결론을 먼저 말하고 구체 사례 덧붙이기",
       "supplement_needed": "구체적인 결과 수치 언급하기"
     }
-  ]
+  ],
+  "target_university": "가천대학교",
+  "target_department": "컴퓨터공학과",
+  "mode": "TEXT",
+  "difficulty": "Normal"
 }
 ```
+
+**Response Fields:**
+- `interview_logs`: 면접 대화 기록 (질문, 답변, 소요 시간, 주제)
+- `scores`: 각 평가 항목별 점수
+- `strength_tags`: 강점 태그 리스트
+- `weakness_tags`: 약점 태그 리스트
+- `detailed_analysis`: 질문별 상세 분석
+- `target_university`: 지원 대학교
+- `target_department`: 지원 학과
+- `mode`: 면접 모드 (TEXT, AUDIO)
+- `difficulty`: 면접 난이도 (Easy, Normal, Hard)
 
 ---
 
@@ -341,3 +356,30 @@ State는 **매 답변마다 DB에 즉시 저장**합니다:
 | `403` | 권한 없음 (thread_id 불일치) |
 | `404` | 리소스 없음 (생기부/세션) |
 | `500` | 서버 내부 오류 |
+| `502` | LLM 호출 실패 (즉시 에러 응답) |
+
+### 6.1 에러 처리 정책
+
+#### 502 Bad Gateway 오류 처리
+- **LLM 호출 실패 시 즉시 에러 응답**: 502 오류 발생 시 타임아웃 대기 없이 즉시 에러를 반환합니다.
+- **타임아웃 설정**: 모든 LLM 호출은 60초 타임아웃이 적용됩니다.
+- **재시도 정책**:
+  - **질문 생성**: 502/타임아웃 오류 시 즉시 실패 처리 (재시도 없음)
+  - **면접 질문 생성**: 502/타임아웃 오류 시 즉시 에러 메시지 반환
+
+#### SSE 에러 응답 형식
+```python
+# 에러 발생 시
+data: {"status": "error", "message": "에러 메시지"}
+
+# 502 오류 시 구체적 메시지
+data: {"status": "error", "message": "LLM 호출 실패 (502 Bad Gateway): 네트워크 오류가 발생했습니다. 다시 시도해 주세요."}
+
+# 타임아웃 오류 시
+data: {"status": "error", "message": "LLM 호출 타임아웃 (60초 초과): 서버 응답이 지연되고 있습니다. 다시 시도해 주세요."}
+```
+
+#### 클라이언트 권장 사항
+1. **SSE 에러 감지**: `status: "error"` 수신 시 즉시 사용자에게 에러 메시지 표시
+2. **재시도 유도**: 에러 메시지에 "다시 시도해 주세요" 포함
+3. **타임아웃 처리**: 30초 이상 응답 없을 경우 연결 종료 및 에러 표시

@@ -71,7 +71,7 @@ class VectorService:
             doc.close()
             pdf_bytes.seek(0)  # 다시 처음으로
 
-            batch_size = 4  # 4페이지씩 배치
+            batch_size = 2  # 2페이지씩 배치
             total_batches = (total_pages + batch_size - 1) // batch_size
 
             logger.info(f"📄 {total_pages} pages → {total_batches} batches ({batch_size} pages/batch)")

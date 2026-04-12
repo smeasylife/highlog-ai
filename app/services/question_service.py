@@ -278,16 +278,24 @@ class QuestionGenerationService:
                     return {"success": True, "questions": questions}
 
                 except Exception as e:
+                    error_type = type(e).__name__
+                    error_msg = str(e)
+
+                    # 502 Bad Gateway 또는 타임아웃 오류: 즉시 실패 처리 (재시도 없음)
+                    if "502" in error_msg or "Bad Gateway" in error_msg or "timeout" in error_msg.lower() or error_type == "TimeoutError":
+                        logger.error(f"  ❌ {category}: Network/Timeout error (502/timeout) - immediate failure: {error_msg}")
+                        return {"success": False, "questions": [], "reason": f"Network error: {error_msg}"}
+
                     logger.warning(f"  ❌ Attempt {attempt + 1} failed for {category}: {e}")
 
                     if attempt < max_retries:
-                        # 재시도 대기
+                        # 재시도 대기 (네트워크 오류 제외)
                         await asyncio.sleep(1)
                         logger.info(f"  🔄 Retrying {category}...")
                     else:
                         # 최대 재시도 초과
                         logger.error(f"  ❌ All {max_retries + 1} attempts failed for {category}")
-                        raise Exception(f"{category} 카테고리 질문 생성 실패 (최대 {max_retries + 1}회 시도): {str(e)}")
+                        return {"success": False, "questions": [], "reason": str(e)}
 
         except Exception as e:
             logger.error(f"❌ Failed to process {category}: {e}")
@@ -452,9 +460,10 @@ class QuestionGenerationService:
   ]
 }"""
 
-            # LLM 서비스로 구조화된 출력 생성
+            # LLM 서비스로 구조화된 출력 생성 (타임아웃 30초 추가)
             from langchain_google_genai import ChatGoogleGenerativeAI
             from langchain_core.messages import HumanMessage, SystemMessage
+            import asyncio
 
             llm = ChatGoogleGenerativeAI(
                 model="gemini-2.5-flash",
@@ -492,7 +501,11 @@ class QuestionGenerationService:
                 HumanMessage(content=prompt)
             ]
 
-            result = await structured_llm.ainvoke(messages)
+            # 타임아웃 설정 (60초) - 502 오류 즉시 감지용
+            result = await asyncio.wait_for(
+                structured_llm.ainvoke(messages),
+                timeout=60.0
+            )
             questions = result.get("questions", [])
 
             # category를 코드에서 직접 할당 (AI가 임의로 생성하지 않도록)
@@ -502,10 +515,22 @@ class QuestionGenerationService:
             logger.info(f"Generated {len(questions)} questions for {category}")
             return questions
 
+        except asyncio.TimeoutError:
+            error_msg = f"LLM 호출 타임아웃 (60초 초과) - {category}"
+            logger.error(f"❌ {error_msg}")
+            raise TimeoutError(error_msg)
         except Exception as e:
+            error_msg = str(e)
+            error_type = type(e).__name__
+
+            # 502 Bad Gateway 또는 네트워크 오류: 즉시 에러 전파
+            if "502" in error_msg or "Bad Gateway" in error_msg or "connection" in error_msg.lower():
+                logger.error(f"❌ Network error (502/connection) in {category}: {error_msg}")
+                raise Exception(f"Network error (502): {error_msg}")
+
             error_msg = f"AI 응답 에러 발생: {str(e)}"
             logger.error(f"❌ {error_msg}")
-            logger.error(f"Full error details: {type(e).__name__}")
+            logger.error(f"Full error details: {error_type}")
             # 빈 리스트 반환 즉시 (상위에서 실패 처리)
             return []
 
