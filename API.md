@@ -69,7 +69,7 @@ data: {"status": "error", "message": "에러 메시지"}
 
 ## 3. 게스트 플로우 (Guest Record & Question Generation)
 
-회원가입 전 사용자가 생기부 파싱과 질문 생성을 먼저 진행할 수 있는 API입니다. 게스트 작업물은 `guest_work_items` 테이블의 JSON 컬럼에 임시 저장하고, 회원가입 완료 후 정식 회원 데이터로 이관합니다.
+회원가입 전 사용자가 생기부 파싱과 질문 생성을 먼저 진행할 수 있는 API입니다. 게스트 작업물은 `guest_work_items` 테이블의 JSON 컬럼에 임시 저장하고, 프론트엔드가 회원가입 완료 후 이관 API를 호출하면 정식 회원 데이터로 이관합니다.
 
 ### 3-1. 게스트 세션 발급
 
@@ -154,7 +154,7 @@ data: {"type": "error", "progress": 0, "message": "에러 메시지"}
 
 ### POST /ai/guest/migrate
 
-Spring 회원가입 성공 후 서버 간 호출합니다. 프론트엔드는 HttpOnly 쿠키를 직접 읽지 않고, 회원가입 요청 시 브라우저가 `guest_id` 쿠키를 자동 전송하도록 `credentials`를 포함합니다. Spring은 회원 생성 후 `guest_id` 쿠키와 `userId`를 함께 FastAPI로 전달합니다.
+프론트엔드가 회원가입 성공 후 호출합니다. 프론트엔드는 HttpOnly 쿠키를 직접 읽지 않고, 브라우저가 `guest_id` 쿠키를 자동 전송하도록 `credentials`를 포함해 호출합니다. 요청 body에는 회원가입 응답으로 받은 `userId`를 전달합니다.
 
 **Request Header:**
 ```http
