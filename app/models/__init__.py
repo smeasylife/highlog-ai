@@ -99,6 +99,23 @@ class Question(Base):
     question_set = relationship("QuestionSet", back_populates="questions")
 
 
+class GuestWorkItem(Base):
+    """회원가입 전 게스트 작업물 보관 테이블"""
+    __tablename__ = "guest_work_items"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    guest_id = Column(String(64), unique=True, nullable=False, index=True)
+
+    record_json = Column(JSON, nullable=True)
+    record_chunks_json = Column(JSON, nullable=True)
+    question_set_json = Column(JSON, nullable=True)
+    questions_json = Column(JSON, nullable=True)
+
+    status = Column(String(30), default="ISSUED", nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class InterviewSession(Base):
     """면접 세션 정보"""
     __tablename__ = "interview_sessions"

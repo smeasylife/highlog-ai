@@ -1,5 +1,7 @@
 """테스트용 로컬 PDF 벡터화 API - S3 방식과 동일한 구조로 모방"""
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Cookie, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import json
@@ -8,7 +10,7 @@ import io
 import os
 
 from app.database import get_db
-from app.models import StudentRecord
+from app.models import GuestWorkItem, StudentRecord
 from app.services.vector_service import vector_service
 from app.services.question_service import question_service
 from app.schemas import SSEProgressEvent, GenerateQuestionsRequest
@@ -19,6 +21,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+GUEST_COOKIE_NAME = "guest_id"
 
 
 # ==================== 헬퍼 함수 ====================
@@ -87,6 +90,7 @@ async def test_vectorize_local_pdf(
         record = StudentRecord(
             user_id=current_user.user_id,
             title="테스트 생활기록부 (로컬 PDF)",
+            filename="highschool.pdf",
             s3_key="local_test/highschool.pdf",  # 테스트용 가상 S3 키
             status="PENDING"
         )
@@ -111,6 +115,64 @@ async def test_vectorize_local_pdf(
         raise
     except Exception as e:
         logger.error(f"Error creating test record: {e}")
+        raise HTTPException(status_code=500, detail=f"생기부 등록 중 오류가 발생했습니다: {str(e)}")
+
+
+@router.post("/test/vectorize-uploaded-pdf")
+async def test_vectorize_uploaded_pdf(
+    file: UploadFile = File(...),
+    guest_id: Optional[str] = Cookie(None, alias=GUEST_COOKIE_NAME),
+    db: Session = Depends(get_db)
+):
+    """
+    테스트용 게스트 파일 업로드 PDF 벡터화 엔드포인트
+
+    로컬에서 S3 연결 없이 multipart/form-data로 전달받은 PDF를 벡터화합니다.
+    정식 테이블에는 저장하지 않고 guest_id HttpOnly 쿠키의 게스트 작업물 JSON에 저장합니다.
+    """
+    try:
+        if not guest_id:
+            raise HTTPException(status_code=400, detail="게스트 세션 쿠키가 없습니다.")
+
+        guest_work = db.query(GuestWorkItem).filter(
+            GuestWorkItem.guest_id == guest_id
+        ).first()
+
+        if not guest_work:
+            raise HTTPException(status_code=404, detail="게스트 세션을 찾을 수 없습니다.")
+
+        if guest_work.status == "MIGRATED":
+            raise HTTPException(status_code=400, detail="이미 회원 계정으로 이관된 게스트 작업물입니다.")
+
+        filename = file.filename or "uploaded.pdf"
+        content_type = file.content_type or ""
+
+        if content_type and content_type not in ("application/pdf", "application/octet-stream"):
+            raise HTTPException(status_code=400, detail="PDF 파일만 업로드할 수 있습니다.")
+
+        if not filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="PDF 파일만 업로드할 수 있습니다.")
+
+        pdf_data = await file.read()
+        if not pdf_data:
+            raise HTTPException(status_code=400, detail="업로드된 PDF 파일이 비어 있습니다.")
+
+        logger.info(f"📄 Received uploaded PDF: {filename}, size={len(pdf_data)} bytes")
+
+        return StreamingResponse(
+            test_uploaded_pdf_vectorization_stream(guest_id, filename, pdf_data, db),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating uploaded test record: {e}")
         raise HTTPException(status_code=500, detail=f"생기부 등록 중 오류가 발생했습니다: {str(e)}")
 
 
@@ -180,6 +242,103 @@ async def test_vectorization_stream(record: StudentRecord, pdf_path: str, db: Se
         try:
             record.status = "FAILED"
             db.commit()
+        except:
+            pass
+
+        error_event = SSEProgressEvent(
+            type="error",
+            progress=0,
+            message=str(e)
+        )
+        yield f"data: {error_event.model_dump_json()}\n\n"
+
+
+async def test_uploaded_pdf_vectorization_stream(
+    guest_id: str,
+    filename: str,
+    pdf_data: bytes,
+    db: Session
+):
+    """
+    테스트용 게스트 업로드 PDF 벡터화 SSE 스트림
+
+    S3 다운로드 대신 요청 바디의 PDF bytes를 사용하고 게스트 작업물 JSON에 저장합니다.
+    """
+    try:
+        yield create_sse_event(0)
+
+        progress_queue = asyncio.Queue()
+
+        vectorization_task = asyncio.create_task(
+            _process_uploaded_pdf_vectorization(
+                pdf_data=pdf_data,
+                progress_queue=progress_queue
+            )
+        )
+
+        while not vectorization_task.done() or not progress_queue.empty():
+            try:
+                progress = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
+                yield create_sse_event(progress)
+            except asyncio.TimeoutError:
+                continue
+
+        success, message, record_chunks_json = await vectorization_task
+
+        guest_work = db.query(GuestWorkItem).filter(
+            GuestWorkItem.guest_id == guest_id
+        ).first()
+
+        if not guest_work:
+            error_event = SSEProgressEvent(
+                type="error",
+                progress=0,
+                message="게스트 세션을 찾을 수 없습니다."
+            )
+            yield f"data: {error_event.model_dump_json()}\n\n"
+            return
+
+        if not success:
+            guest_work.status = "FAILED"
+            db.commit()
+
+            error_event = SSEProgressEvent(
+                type="error",
+                progress=0,
+                message=message
+            )
+            yield f"data: {error_event.model_dump_json()}\n\n"
+            return
+
+        guest_work.record_json = {
+            "title": "임시 생기부",
+            "filename": filename,
+            "s3_key": f"local_upload/{guest_id}/{filename}",
+            "status": "READY"
+        }
+        guest_work.record_chunks_json = record_chunks_json
+        guest_work.question_set_json = None
+        guest_work.questions_json = None
+        guest_work.status = "PARSED"
+        db.commit()
+
+        complete_event = SSEProgressEvent(
+            type="complete",
+            progress=100,
+            message="완료되었습니다."
+        )
+        yield f"data: {complete_event.model_dump_json()}\n\n"
+
+    except Exception as e:
+        logger.error(f"Error in uploaded PDF vectorization stream: {e}")
+
+        try:
+            guest_work = db.query(GuestWorkItem).filter(
+                GuestWorkItem.guest_id == guest_id
+            ).first()
+            if guest_work:
+                guest_work.status = "FAILED"
+                db.commit()
         except:
             pass
 
@@ -281,6 +440,49 @@ async def _process_local_pdf_vectorization(
 
     finally:
         local_db.close()
+
+
+async def _process_uploaded_pdf_vectorization(
+    pdf_data: bytes,
+    progress_queue: asyncio.Queue
+):
+    """
+    업로드된 PDF bytes 벡터화 처리
+
+    Args:
+        pdf_data: 요청 바디로 받은 PDF bytes
+        progress_queue: 진행률을 전송할 큐
+
+    Returns:
+        (성공 여부, 메시지, 청크 JSON 배열)
+    """
+    try:
+        await send_progress(10, progress_queue)
+
+        pdf_bytes = io.BytesIO(pdf_data)
+
+        await send_progress(20, progress_queue)
+        logger.info(f"📄 Uploaded PDF file size: {len(pdf_data)} bytes")
+
+        async def progress_wrapper(progress: int):
+            await send_progress(progress, progress_queue)
+
+        success, message, record_chunks_json = await vector_service.vectorize_pdf_to_json(
+            pdf_bytes=pdf_bytes,
+            progress_callback=progress_wrapper
+        )
+
+        if not success:
+            raise Exception(message)
+
+        logger.info(f"✅ Uploaded guest PDF vectorization completed: chunks={len(record_chunks_json)}")
+
+        return True, message, record_chunks_json
+
+    except Exception as e:
+        logger.error(f"Uploaded guest PDF vectorization failed: {e}")
+
+        return False, str(e), []
 
 
 # ==================== Phase 2: 질문 생성 (테스트용) ====================
