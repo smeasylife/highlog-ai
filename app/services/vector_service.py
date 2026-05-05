@@ -207,6 +207,143 @@ class VectorService:
             logger.error(f"PDF vectorization failed: {str(e)}")
             db.rollback()
             return False, f"Vectorization error: {str(e)}", 0
+
+    async def vectorize_pdf_to_json(
+        self,
+        pdf_bytes: io.BytesIO,
+        progress_callback=None
+    ) -> Tuple[bool, str, List[Dict]]:
+        """
+        PDF를 Gemini로 청킹하고 임베딩하여 DB 저장 없이 JSON 저장용 데이터로 반환
+
+        Args:
+            pdf_bytes: PDF 파일 바이트
+            progress_callback: 진행률 콜백 함수
+
+        Returns:
+            (성공 여부, 메시지, record_chunks_json)
+        """
+        try:
+            logger.info("Starting guest PDF vectorization")
+
+            doc = fitz.open(stream=pdf_bytes.read(), filetype="pdf")
+            total_pages = len(doc)
+            doc.close()
+            pdf_bytes.seek(0)
+            pdf_data = pdf_bytes.getvalue()
+
+            batch_size = 2
+            total_batches = (total_pages + batch_size - 1) // batch_size
+
+            logger.info(f"📄 {total_pages} pages → {total_batches} batches ({batch_size} pages/batch)")
+
+            if progress_callback:
+                await progress_callback(30)
+
+            all_chunks = []
+            failed_batches = []
+
+            logger.info("🤖 Guest AI Chunking (Parallel Processing)...")
+
+            tasks = []
+            for i in range(total_batches):
+                start_page = i * batch_size
+                end_page = min(start_page + batch_size, total_pages)
+                pages_in_batch = list(range(start_page, end_page))
+                tasks.append(self._parse_pdf_batch_with_gemini(
+                    io.BytesIO(pdf_data),
+                    pages_in_batch
+                ))
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.warning(f"⚠️  Guest batch {i + 1}/{total_batches} failed: {str(result)[:80]}")
+                    failed_batches.append(i + 1)
+                elif result:
+                    all_chunks.extend(result)
+                    start_page = i * batch_size
+                    end_page = min(start_page + batch_size, total_pages)
+                    logger.info(f"📦 Guest batch {i + 1}/{total_batches}: {len(result)} chunks (pages {start_page + 1}-{end_page})")
+                else:
+                    logger.warning(f"⚠️  Guest batch {i + 1}/{total_batches}: no chunks")
+                    failed_batches.append(i + 1)
+
+            if progress_callback:
+                await progress_callback(50)
+
+            if not all_chunks:
+                logger.error("No guest chunks generated from any batch")
+                return False, "Failed to generate chunks from all batches", []
+
+            if progress_callback:
+                await progress_callback(55)
+
+            logger.info(f"🔄 Guest Batch Embedding {len(all_chunks)} chunks...")
+
+            embedding_batch_size = 20
+            all_embeddings = []
+            failed_embeddings = 0
+
+            for i in range(0, len(all_chunks), embedding_batch_size):
+                batch = all_chunks[i:i + embedding_batch_size]
+                texts = [chunk["text"] for chunk in batch]
+
+                try:
+                    embeddings = await self._embed_batch(texts)
+                    all_embeddings.extend(embeddings)
+
+                    if progress_callback:
+                        embed_progress = 55 + int(((i + embedding_batch_size) / len(all_chunks)) * 35)
+                        await progress_callback(min(embed_progress, 90))
+
+                except Exception as e:
+                    logger.warning(f"⚠️  Guest embedding batch {i // embedding_batch_size + 1} failed: {str(e)[:50]}")
+                    for chunk in batch:
+                        try:
+                            emb = await self._embed_text(chunk["text"])
+                            all_embeddings.append(emb)
+                        except Exception as e2:
+                            logger.debug(f"   ❌ Guest individual chunk failed: {str(e2)[:50]}")
+                            all_embeddings.append(None)
+                            failed_embeddings += 1
+
+            record_chunks_json = []
+            for idx, chunk_data in enumerate(all_chunks):
+                if idx < len(all_embeddings) and all_embeddings[idx] is not None:
+                    record_chunks_json.append({
+                        "chunk_text": chunk_data["text"],
+                        "chunk_index": idx,
+                        "category": chunk_data["category"],
+                        "embedding": all_embeddings[idx]
+                    })
+
+            saved_count = len(record_chunks_json)
+
+            if saved_count == 0:
+                logger.error("❌ No guest chunks were successfully vectorized")
+                return False, "No chunks were successfully vectorized", []
+
+            result_parts = [f"✅ {saved_count} guest chunks prepared"]
+            if failed_batches:
+                result_parts.append(f"{len(failed_batches)} batches failed")
+            if failed_embeddings:
+                result_parts.append(f"{failed_embeddings} embeddings failed")
+
+            logger.info("📊 " + ", ".join(result_parts))
+
+            success_msg = f"{saved_count} chunks successfully vectorized"
+            if failed_batches:
+                success_msg += f" ({len(failed_batches)} batches failed but skipped)"
+            if failed_embeddings:
+                success_msg += f" ({failed_embeddings} chunks failed to embed)"
+
+            return True, success_msg, record_chunks_json
+
+        except Exception as e:
+            logger.error(f"Guest PDF vectorization failed: {str(e)}")
+            return False, f"Vectorization error: {str(e)}", []
     
     async def _parse_pdf_batch_with_gemini(
         self,

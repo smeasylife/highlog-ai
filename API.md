@@ -67,9 +67,132 @@ data: {"status": "error", "message": "에러 메시지"}
 
 ---
 
-## 3. 실시간 면접 (Real-time Interview)
+## 3. 게스트 플로우 (Guest Record & Question Generation)
 
-### 3-1. 면접 세션 시작
+회원가입 전 사용자가 생기부 파싱과 질문 생성을 먼저 진행할 수 있는 API입니다. 게스트 작업물은 `guest_work_items` 테이블의 JSON 컬럼에 임시 저장하고, 회원가입 완료 후 정식 회원 데이터로 이관합니다.
+
+### 3-1. 게스트 세션 발급
+
+### POST /ai/guest/session
+
+온보딩 시작 시 프론트엔드가 호출합니다.
+
+**Response Header:**
+```http
+Set-Cookie: guest_id={uuid}; HttpOnly; Max-Age=604800; Path=/; SameSite=Lax
+```
+
+**Response:**
+```json
+{
+  "message": "게스트 세션이 발급되었습니다."
+}
+```
+
+---
+
+### 3-2. 게스트 생기부 파싱
+
+### POST /ai/guest/records
+
+인증 없이 S3에 업로드된 생기부 PDF를 파싱하고, 정식 테이블이 아닌 게스트 작업물 JSON에 저장합니다. 게스트 세션은 `guest_id` HttpOnly 쿠키로 식별합니다. 게스트 플로우에서는 `title`을 받지 않으며 내부적으로 `"임시 생기부"`를 사용합니다.
+
+**Request Header:**
+```http
+Cookie: guest_id={uuid}
+```
+
+**Request:**
+```json
+{
+  "filename": "생활기록부.pdf",
+  "s3Key": "guests/records/uuid_filename.pdf"
+}
+```
+
+**Response:** `text/event-stream` (SSE 스트리밍)
+
+```python
+data: {"type": "processing", "progress": 30, "message": "진행률 30%"}
+data: {"type": "complete", "progress": 100, "message": "완료되었습니다."}
+data: {"type": "error", "progress": 0, "message": "에러 메시지"}
+```
+
+---
+
+### 3-3. 게스트 질문 생성
+
+### POST /ai/guest/questions
+
+게스트 작업물의 `record_chunks_json`을 기반으로 질문을 생성하고, `question_set_json`, `questions_json`에 저장합니다. 게스트 세션은 `guest_id` HttpOnly 쿠키로 식별합니다. 게스트 플로우에서는 질문 세트 `title`을 받지 않으며 내부적으로 `"임시 질문"`을 사용합니다.
+
+**Request Header:**
+```http
+Cookie: guest_id={uuid}
+```
+
+**Request:**
+```json
+{
+  "target_school": "한양대학교",
+  "target_major": "컴퓨터공학과",
+  "interview_type": "학생부종합"
+}
+```
+
+**Response:** `text/event-stream` (SSE 스트리밍)
+
+```python
+data: {"type": "processing", "progress": 50, "message": "세특 영역 완료 (2/5)"}
+data: {"type": "complete", "progress": 100, "message": "완료되었습니다."}
+data: {"type": "error", "progress": 0, "message": "에러 메시지"}
+```
+
+---
+
+### 3-4. 게스트 작업물 회원 이관
+
+### POST /ai/guest/migrate
+
+Spring 회원가입 성공 후 서버 간 호출합니다. 프론트엔드는 HttpOnly 쿠키를 직접 읽지 않고, 회원가입 요청 시 브라우저가 `guest_id` 쿠키를 자동 전송하도록 `credentials`를 포함합니다. Spring은 회원 생성 후 `guest_id` 쿠키와 `userId`를 함께 FastAPI로 전달합니다.
+
+**Request Header:**
+```http
+Cookie: guest_id={uuid}
+```
+
+**Request:**
+```json
+{
+  "userId": 1
+}
+```
+
+**Response:**
+```json
+{
+  "migrated": true,
+  "recordId": 10,
+  "questionSetId": 3,
+  "status": "MIGRATED"
+}
+```
+
+**작업물이 없거나 이미 이관된 경우:**
+```json
+{
+  "migrated": false,
+  "recordId": null,
+  "questionSetId": null,
+  "status": "MIGRATED"
+}
+```
+
+---
+
+## 4. 실시간 면접 (Real-time Interview)
+
+### 4-1. 면접 세션 시작
 
 ### POST /ai/interview/start
 
@@ -102,7 +225,7 @@ data: {"status": "error", "message": "에러 메시지"}
 
 ---
 
-### 3-2. 텍스트 기반 면접 채팅
+### 4-2. 텍스트 기반 면접 채팅
 
 ### POST /ai/interview/chat/text/{session_id}
 
@@ -145,7 +268,7 @@ data: {"status": "error", "message": "질문 생성 중 오류가 발생했습�
 
 ---
 
-### 3-3. 오디오 기반 면접 채팅
+### 4-3. 오디오 기반 면접 채팅
 
 ### POST /ai/interview/chat/audio/{session_id}
 
@@ -190,9 +313,9 @@ response_time: 45
 
 ---
 
-## 4. 면접 데이터 조회
+## 5. 면접 데이터 조회
 
-### 4-1. 면접 내역 조회
+### 5-1. 면접 내역 조회
 
 ### GET /ai/interview/list
 
@@ -215,7 +338,7 @@ response_time: 45
 
 ---
 
-### 4-2. 면접 결과 분석
+### 5-2. 면접 결과 분석
 
 ### GET /ai/interview/analyze/{session_id}
 
@@ -281,7 +404,7 @@ response_time: 45
 
 ---
 
-### 4-3. 사용자 대시보드
+### 5-3. 사용자 대시보드
 
 ### GET /ai/dashboard
 
@@ -310,7 +433,7 @@ response_time: 45
 
 ---
 
-## 5. AI Service 워크플로우
+## 6. AI Service 워크플로우
 
 ### 처리 로직
 
@@ -348,7 +471,7 @@ State는 **매 답변마다 DB에 즉시 저장**합니다:
 
 ---
 
-## 6. Common Error Codes
+## 7. Common Error Codes
 
 | Code | Description |
 |-----|-------------|
@@ -358,7 +481,7 @@ State는 **매 답변마다 DB에 즉시 저장**합니다:
 | `500` | 서버 내부 오류 |
 | `502` | LLM 호출 실패 (즉시 에러 응답) |
 
-### 6.1 에러 처리 정책
+### 7.1 에러 처리 정책
 
 #### 502 Bad Gateway 오류 처리
 - **LLM 호출 실패 시 즉시 에러 응답**: 502 오류 발생 시 타임아웃 대기 없이 즉시 에러를 반환합니다.

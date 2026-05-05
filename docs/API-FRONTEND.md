@@ -66,6 +66,10 @@ POST /api/auth/signup
   "marketingAgreement": true
 }
 ```
+- 게스트 작업물이 있는 경우에도 프론트는 `guestId`를 body에 넣지 않습니다.
+- 브라우저가 `guest_id` HttpOnly 쿠키를 회원가입 요청에 자동 포함할 수 있도록 `credentials`를 포함해 호출합니다.
+- Spring은 회원 생성 완료 후 `guest_id` 쿠키가 있으면 `POST /ai/guest/migrate`를 서버 간 호출합니다.
+
 **Response**
 ```json
 {
@@ -311,7 +315,126 @@ GET /api/bookmarks
 
 ---
 
-## 4. 실시간 면접 (Text/Audio)
+## 4. 게스트 생기부/질문 생성
+
+### 흐름
+```
+① 게스트 세션 발급(Set-Cookie) → ② Presigned URL 발급/S3 업로드 → ③ 게스트 생기부 파싱(Cookie) → ④ 게스트 질문 생성(Cookie) → ⑤ 회원가입 시 쿠키 자동 전송 → ⑥ Spring이 FastAPI 이관 API 호출
+```
+
+### 4-1. 게스트 세션 발급
+```
+POST /ai/guest/session
+```
+**Response**
+```http
+Set-Cookie: guest_id={uuid}; HttpOnly; Max-Age=604800; Path=/; SameSite=Lax
+```
+```json
+{
+  "message": "게스트 세션이 발급되었습니다."
+}
+```
+- 프론트는 `guestId`를 직접 보관하지 않습니다.
+- 이후 게스트 API 호출과 회원가입 API 호출은 쿠키가 전송되도록 `credentials`를 포함해야 합니다.
+
+### 4-2. 게스트 생기부 파싱
+```
+POST /ai/guest/records
+```
+**Request Header**
+```http
+Cookie: guest_id={uuid}
+```
+**Request**
+```json
+{
+  "filename": "생활기록부.pdf",
+  "s3Key": "guests/records/uuid_filename.pdf"
+}
+```
+**Response** (SSE Streaming)
+```
+data: {"type": "processing", "progress": 30, "message": "진행률 30%"}
+data: {"type": "complete", "progress": 100, "message": "완료되었습니다."}
+data: {"type": "error", "progress": 0, "message": "에러 메시지"}
+```
+- 게스트 생기부 파싱 API는 `title`을 받지 않습니다.
+- FastAPI는 게스트 작업물에 `"임시 생기부"` 제목으로 저장합니다.
+- 정식 `student_records`, `record_chunks` 테이블에는 아직 저장하지 않습니다.
+
+### 4-3. 게스트 질문 생성
+```
+POST /ai/guest/questions
+```
+**Request Header**
+```http
+Cookie: guest_id={uuid}
+```
+**Request**
+```json
+{
+  "target_school": "한양대학교",
+  "target_major": "컴퓨터공학과",
+  "interview_type": "학생부종합"
+}
+```
+**Response** (SSE Streaming)
+```
+data: {"type": "processing", "progress": 50, "message": "세특 영역 완료 (2/5)"}
+data: {"type": "complete", "progress": 100, "message": "완료되었습니다."}
+data: {"type": "error", "progress": 0, "message": "에러 메시지"}
+```
+- 게스트 질문 생성 API는 `title`을 받지 않습니다.
+- FastAPI는 게스트 작업물에 `"임시 질문"` 제목으로 저장합니다.
+- 정식 `question_sets`, `questions` 테이블에는 아직 저장하지 않습니다.
+
+### 4-4. 게스트 작업물 회원 이관
+```
+POST /ai/guest/migrate
+```
+**호출 주체**
+- Spring 회원가입 API가 회원 생성 성공 후 서버 간 호출합니다.
+- 프론트가 직접 호출하지 않습니다.
+- Spring은 회원가입 요청에서 받은 `guest_id` 쿠키를 FastAPI 호출에 전달합니다.
+
+**Request Header**
+```http
+Cookie: guest_id={uuid}
+```
+
+**Request**
+```json
+{
+  "userId": 1
+}
+```
+**Response**
+```json
+{
+  "migrated": true,
+  "recordId": 10,
+  "questionSetId": 3,
+  "status": "MIGRATED"
+}
+```
+**작업물이 없거나 이미 이관된 경우**
+```json
+{
+  "migrated": false,
+  "recordId": null,
+  "questionSetId": null,
+  "status": "MIGRATED"
+}
+```
+- `record_json`은 `student_records`로 이관됩니다.
+- `record_chunks_json`은 `record_chunks`로 이관됩니다.
+- `question_set_json`은 `question_sets`로 이관됩니다.
+- `questions_json`은 `questions`로 이관됩니다.
+
+---
+
+## 5. 실시간 면접 (Text/Audio)
 
 ### 흐름
 ```
@@ -319,7 +442,7 @@ GET /api/bookmarks
 ② 오디오: 첫 답변(음성)으로 초기화 → STT → thread_id 발급 → 실시간 채팅 (STT → LangGraph → TTS)
 ```
 
-### 4-1. 텍스트 면접 초기화
+### 5-1. 텍스트 면접 초기화
 ```
 POST /ai/interview/initialize/text
 ```
@@ -341,7 +464,7 @@ POST /ai/interview/initialize/text
 }
 ```
 
-### 4-2. 오디오 면접 초기화
+### 5-2. 오디오 면접 초기화
 ```
 POST /ai/interview/initialize/audio
 ```
@@ -365,7 +488,7 @@ response_time: 45
 - **LangGraph**: 답변 분석 및 다음 질문 생성
 - **TTS**: Google Cloud TTS
 
-### 4-3. 텍스트 채팅
+### 5-3. 텍스트 채팅
 ```
 POST /ai/interview/chat/text/{thread_id}
 ```
@@ -384,7 +507,7 @@ POST /ai/interview/chat/text/{thread_id}
 }
 ```
 
-### 4-4. 오디오 채팅
+### 5-4. 오디오 채팅
 ```
 POST /ai/interview/chat/audio/{thread_id}
 ```
@@ -402,7 +525,7 @@ response_time: 30
 }
 ```
 
-### 4-5. 면접 내역 조회
+### 5-5. 면접 내역 조회
 ```
 GET /ai/interview/list
 ```
@@ -424,7 +547,7 @@ GET /ai/interview/list
 }
 ```
 
-### 4-6. 면접 로그 조회
+### 5-6. 면접 로그 조회
 ```
 GET /ai/interview/logs/{session_id}
 ```
@@ -446,7 +569,7 @@ GET /ai/interview/logs/{session_id}
 }
 ```
 
-### 4-7. 면접 결과 분석
+### 5-7. 면접 결과 분석
 ```
 GET /ai/interview/analyze/{session_id}
 ```
@@ -505,9 +628,9 @@ GET /ai/interview/analyze/{session_id}
 
 ---
 
-## 5. 마이페이지
+## 6. 마이페이지
 
-### 5-1. 대시보드
+### 6-1. 대시보드
 ```
 GET /api/users/me/dashboard
 ```
@@ -522,7 +645,7 @@ GET /api/users/me/dashboard
 }
 ```
 
-### 5-2. 계정정보
+### 6-2. 계정정보
 ```
 GET /api/users/me/accountInfo
 ```
@@ -535,7 +658,7 @@ GET /api/users/me/accountInfo
 }
 ```
 
-### 5-3. 설정
+### 6-3. 설정
 ```
 GET /api/users/me/setting
 ```
@@ -546,7 +669,7 @@ GET /api/users/me/setting
 }
 ```
 
-### 5-4. 비밀번호 변경
+### 6-4. 비밀번호 변경
 ```
 PATCH /api/users/me/password
 ```
@@ -564,7 +687,7 @@ PATCH /api/users/me/password
 }
 ```
 
-### 5-5. 회원탈퇴
+### 6-5. 회원탈퇴
 ```
 DELETE /api/users/me
 ```
@@ -583,9 +706,9 @@ DELETE /api/users/me
 
 ---
 
-## 6. 공지사항 & FAQ
+## 7. 공지사항 & FAQ
 
-### 6-1. 공지사항 목록
+### 7-1. 공지사항 목록
 ```
 GET /api/notices?page=0&size=10
 ```
@@ -606,7 +729,7 @@ GET /api/notices?page=0&size=10
 }
 ```
 
-### 6-2. 공지사항 상세
+### 7-2. 공지사항 상세
 ```
 GET /api/notices/{id}
 ```
@@ -622,7 +745,7 @@ GET /api/notices/{id}
 }
 ```
 
-### 6-3. FAQ 목록
+### 7-3. FAQ 목록
 ```
 GET /api/faqs?category=사용법
 ```

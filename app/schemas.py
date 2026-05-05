@@ -25,6 +25,24 @@ class GenerateQuestionsRequest(BaseModel):
     interview_type: str = Field("학생부종합", description="전형 유형 (예: '학생부종합')")
 
 
+class GuestCreateRecordRequest(BaseModel):
+    """게스트 생기부 등록 요청"""
+    filename: str = Field(..., description="원본 파일명")
+    s3Key: str = Field(..., description="S3 객체 키")
+
+
+class GuestGenerateQuestionsRequest(BaseModel):
+    """게스트 벌크 질문 생성 요청"""
+    target_school: str = Field(..., description="목표 학교 (예: '한양대학교')")
+    target_major: str = Field(..., description="목표 전공 (예: '컴퓨터공학과')")
+    interview_type: str = Field("학생부종합", description="전형 유형 (예: '학생부종합')")
+
+
+class GuestMigrateRequest(BaseModel):
+    """게스트 작업물 회원 이관 요청"""
+    userId: int = Field(..., description="회원가입 완료된 사용자 ID")
+
+
 # ========== Response Schemas ==========
 
 class QuestionData(BaseModel):
@@ -44,6 +62,19 @@ class SSEProgressEvent(BaseModel):
     type: str = Field(..., description="이벤트 타입 (progress, complete, error)")
     progress: int = Field(..., description="진행률 (0-100)")
     message: Optional[str] = Field(None, description="진행 상태 메시지")
+
+
+class GuestSessionResponse(BaseModel):
+    """게스트 세션 발급 응답"""
+    message: str = Field(..., description="게스트 세션 발급 메시지")
+
+
+class GuestMigrateResponse(BaseModel):
+    """게스트 작업물 회원 이관 응답"""
+    migrated: bool = Field(..., description="이관 여부")
+    recordId: Optional[int] = Field(None, description="이관된 생기부 ID")
+    questionSetId: Optional[int] = Field(None, description="이관된 질문 세트 ID")
+    status: Optional[str] = Field(None, description="게스트 작업물 상태")
 
 
 # ========== Internal Schemas ==========

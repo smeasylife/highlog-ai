@@ -41,6 +41,9 @@ class QuestionGenerationService:
     CATEGORIES = ["성적", "세특", "창체", "행특", "기타"]
 
     def __init__(self):
+        self.client = genai.Client(
+            api_key=settings.google_api_key
+        )
         # Google GenAI types (JSON 스키마용)
         self.types = types
         # 임베딩 모델 (InterviewData 검색용)
@@ -227,6 +230,171 @@ class QuestionGenerationService:
             "status_message": final_msg,
             "all_questions": all_questions
         }
+
+    async def generate_questions_from_chunks(
+        self,
+        record_chunks: List[Dict[str, Any]],
+        target_school: str,
+        target_major: str,
+        interview_type: str
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        게스트 작업물의 JSON 청크를 기반으로 질문 생성 및 SSE 스트리밍
+
+        Yields:
+            Dict[str, Any]: 진행 상태 정보
+        """
+        logger.info("Initializing guest question generation")
+
+        yield {
+            "progress": 5,
+            "status_message": "질문 생성을 시작합니다 (병렬 처리 중...)"
+        }
+
+        all_questions = []
+        processed_categories = []
+        failed_categories = []
+
+        total_categories = len(self.CATEGORIES)
+        base_progress = 10
+        progress_per_category = (80 - base_progress) // total_categories
+
+        tasks = [
+            self._process_single_category_from_chunks(
+                record_chunks=record_chunks,
+                category=category,
+                target_school=target_school,
+                target_major=target_major,
+                interview_type=interview_type
+            )
+            for category in self.CATEGORIES
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for i, result in enumerate(results):
+            category = self.CATEGORIES[i]
+            completed_count = i + 1
+            progress = base_progress + completed_count * progress_per_category
+
+            try:
+                if isinstance(result, Exception):
+                    logger.error(f"❌ Guest [{category}] failed with exception: {str(result)[:80]}")
+                    failed_categories.append(category)
+                    status_msg = f"{category} 영역 실패 ({completed_count}/{total_categories})"
+                elif result and result.get("success"):
+                    questions = result.get("questions", [])
+                    all_questions.extend(questions)
+                    processed_categories.append(category)
+                    logger.info(f"✅ Guest [{category}] Generated {len(questions)} questions")
+                    status_msg = f"{category} 영역 완료 ({completed_count}/{total_categories})"
+                else:
+                    logger.warning(f"⚠️ Guest [{category}] No questions generated")
+                    failed_categories.append(category)
+                    status_msg = f"{category} 영역 실패 ({completed_count}/{total_categories})"
+
+                yield {
+                    "progress": min(progress, 85),
+                    "status_message": status_msg,
+                    "current_category": category,
+                    "completed_count": completed_count,
+                    "total_count": total_categories
+                }
+
+            except Exception as e:
+                logger.error(f"❌ Guest [{category}] failed while processing result: {str(e)[:80]}")
+                failed_categories.append(category)
+
+        yield {
+            "progress": 90,
+            "status_message": f"모든 영역 처리 완료! {len(processed_categories)}/{total_categories} 카테고리 성공"
+        }
+
+        if failed_categories:
+            logger.warning(f"⚠️ Guest failed categories: {failed_categories}")
+            final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문 생성. {len(failed_categories)}개 카테고리({', '.join(failed_categories)}) 실패로 건너뜀."
+        else:
+            logger.info(f"✅ Guest all categories succeeded. Total questions: {len(all_questions)}")
+            final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문이 생성되었습니다."
+
+        yield {
+            "progress": 100,
+            "status_message": final_msg,
+            "all_questions": all_questions
+        }
+
+    async def _process_single_category_from_chunks(
+        self,
+        record_chunks: List[Dict[str, Any]],
+        category: str,
+        target_school: str,
+        target_major: str,
+        interview_type: str
+    ) -> Dict[str, Any]:
+        """게스트 JSON 청크에서 단일 카테고리 질문 생성"""
+        max_retries = 2
+
+        logger.info(f"🔄 Guest processing category: {category}")
+
+        relevant_chunks = [
+            {
+                "text": chunk.get("chunk_text") or chunk.get("text"),
+                "category": chunk.get("category")
+            }
+            for chunk in record_chunks
+            if chunk.get("category") == category and (chunk.get("chunk_text") or chunk.get("text"))
+        ]
+
+        if not relevant_chunks:
+            logger.warning(f"⚠️ Guest no chunks found for category: {category}")
+            return {"success": False, "questions": [], "reason": "No chunks"}
+
+        from app.database import SessionLocal
+        db = SessionLocal()
+
+        try:
+            for attempt in range(max_retries + 1):
+                try:
+                    logger.info(f"  📝 Guest attempt {attempt + 1}/{max_retries + 1} for {category}")
+
+                    questions = await self._generate_questions_for_category(
+                        category=category,
+                        chunks=relevant_chunks,
+                        target_school=target_school,
+                        target_major=target_major,
+                        interview_type=interview_type,
+                        db=db
+                    )
+
+                    if not questions:
+                        raise ValueError(f"{category} 카테고리에 대한 질문 생성 실패 (빈 응답)")
+
+                    logger.info(f"  ✅ Guest generated {len(questions)} questions for {category} (attempt {attempt + 1})")
+                    return {"success": True, "questions": questions}
+
+                except Exception as e:
+                    error_type = type(e).__name__
+                    error_msg = str(e)
+
+                    if "502" in error_msg or "Bad Gateway" in error_msg or "timeout" in error_msg.lower() or error_type == "TimeoutError":
+                        logger.error(f"  ❌ Guest {category}: Network/Timeout error - immediate failure: {error_msg}")
+                        return {"success": False, "questions": [], "reason": f"Network error: {error_msg}"}
+
+                    logger.warning(f"  ❌ Guest attempt {attempt + 1} failed for {category}: {e}")
+
+                    if attempt < max_retries:
+                        await asyncio.sleep(1)
+                        logger.info(f"  🔄 Guest retrying {category}...")
+                    else:
+                        logger.error(f"  ❌ Guest all {max_retries + 1} attempts failed for {category}")
+                        return {"success": False, "questions": [], "reason": str(e)}
+
+        except Exception as e:
+            logger.error(f"❌ Guest failed to process {category}: {e}")
+            return {"success": False, "questions": [], "reason": str(e)}
+
+        finally:
+            db.close()
 
     async def _process_single_category(
         self,

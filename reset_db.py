@@ -7,7 +7,7 @@
 """
 
 from app.database import engine, Base
-from app.models import User, StudentRecord, RecordChunk, QuestionSet, Question
+from app.models import User, StudentRecord, RecordChunk, QuestionSet, Question, GuestWorkItem
 import sys
 
 
@@ -35,6 +35,7 @@ def reset_database():
     print("  - record_chunks")
     print("  - question_sets")
     print("  - questions")
+    print("  - guest_work_items")
     print()
 
     # 1. 연결하고 CASCADE로 모든 테이블 삭제
@@ -45,6 +46,7 @@ def reset_database():
         with engine.begin() as conn:
             # PostgreSQL의 CASCADE를 사용하여 모든 테이블 삭제
             # 외래 키 제약조건 무시하고 삭제
+            conn.execute(text("DROP TABLE IF EXISTS guest_work_items CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS questions CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS question_sets CASCADE"))
             conn.execute(text("DROP TABLE IF EXISTS record_chunks CASCADE"))
@@ -78,6 +80,7 @@ def reset_database():
     print("  ✨ record_chunks          (벡터화된 청크)")
     print("  ✨ question_sets          (질문 생성 세트)")
     print("  ✨ questions              (생성된 질문)")
+    print("  ✨ guest_work_items       (게스트 작업물)")
     print()
 
 
