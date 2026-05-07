@@ -150,6 +150,38 @@ data: {"type": "error", "progress": 0, "message": "에러 메시지"}
 
 ---
 
+### GET /ai/guest/questions
+
+게스트가 생성한 질문 목록을 조회합니다. 게스트 세션은 `guest_id` HttpOnly 쿠키로 식별하며, 응답 형식은 기존 질문 목록 조회와 동일합니다.
+
+**Request Header:**
+```http
+Cookie: guest_id={uuid}
+```
+
+**Query Parameters (Optional):**
+- `category`: 카테고리 필터
+- `difficulty`: 난이도 필터 (`기본`, `심화`, `압박`, `basic`)
+
+**Response:**
+```json
+[
+  {
+    "questionId": 1,
+    "answerPoints": "전공 선택 동기, 관련 활동, 성과, 향후 계획",
+    "category": "세특",
+    "content": "이 활동에서 본인이 가장 주도적으로 해결한 문제는 무엇이었나요?",
+    "difficulty": "기본",
+    "evaluationCriteria": "전공에 대한 이해도, 준비 정도 평가",
+    "isBookmarked": false,
+    "modelAnswer": "저는 프로젝트 진행 중 ...",
+    "purpose": "전공 적합성 확인"
+  }
+]
+```
+
+---
+
 ### 3-4. 게스트 작업물 회원 이관
 
 ### POST /ai/guest/migrate

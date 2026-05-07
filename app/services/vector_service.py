@@ -7,6 +7,7 @@ import asyncio
 from typing import List, Dict, Tuple
 from pydantic import BaseModel
 from app.models import RecordChunk
+from app.services.llm_service import llm_service
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -438,13 +439,13 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             import time
             start_time = time.time()
 
-            response = await self.client.aio.models.generate_content(
-                model=self.chat_model,
+            response = await llm_service.agenai_generate_content(
                 contents=[prompt] + image_parts,
                 config={
                     "response_mime_type": "application/json",
                     "response_json_schema": RecordsResponse.model_json_schema(),
-                }
+                },
+                timeout=60
             )
 
             elapsed = time.time() - start_time
@@ -478,12 +479,18 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
     async def _embed_text(self, text: str) -> List[float]:
         """텍스트를 벡터로 임베딩 (768차원) - 개별 텍스트용"""
         try:
-            result = await self.client.aio.models.embed_content(
-                model=self.embedding_model,
-                contents=text,
-                config=self.types.EmbedContentConfig(
-                    output_dimensionality=768
+            async def embed_once():
+                return await self.client.aio.models.embed_content(
+                    model=self.embedding_model,
+                    contents=text,
+                    config=self.types.EmbedContentConfig(
+                        output_dimensionality=768
+                    )
                 )
+
+            result = await llm_service.aretry_transient(
+                embed_once,
+                operation_name="Vector embedding"
             )
             return result.embeddings[0].values
         except Exception as e:
@@ -499,12 +506,18 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             import time
             start_time = time.time()
 
-            result = await self.client.aio.models.embed_content(
-                model=self.embedding_model,
-                contents=texts,  # 리스트 전달
-                config=self.types.EmbedContentConfig(
-                    output_dimensionality=768
+            async def embed_batch_once():
+                return await self.client.aio.models.embed_content(
+                    model=self.embedding_model,
+                    contents=texts,  # 리스트 전달
+                    config=self.types.EmbedContentConfig(
+                        output_dimensionality=768
+                    )
                 )
+
+            result = await llm_service.aretry_transient(
+                embed_batch_once,
+                operation_name="Vector batch embedding"
             )
 
             elapsed = time.time() - start_time

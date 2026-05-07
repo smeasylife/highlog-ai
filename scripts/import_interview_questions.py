@@ -20,6 +20,7 @@ from google.genai import types
 from config import settings
 from app.models import InterviewData
 from app.database import Base
+from app.services.llm_service import LLMService
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -28,18 +29,31 @@ logger = logging.getLogger(__name__)
 
 def generate_embedding(text: str, client: genai.Client, types) -> list[float]:
     """텍스트 임베딩 생성 (gemini-embedding-001: 768차원)"""
-    try:
-        result = client.models.embed_content(
-            model="gemini-embedding-001",
-            contents=text,
-            config=types.EmbedContentConfig(
-                output_dimensionality=768
+    import time
+
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            result = client.models.embed_content(
+                model="gemini-embedding-001",
+                contents=text,
+                config=types.EmbedContentConfig(
+                    output_dimensionality=768
+                )
             )
-        )
-        return result.embeddings[0].values
-    except Exception as e:
-        logger.error(f"Error generating embedding for text: {text[:50]}... - {e}")
-        raise
+            return result.embeddings[0].values
+        except Exception as e:
+            if attempt < max_attempts and LLMService.is_retryable_model_error(e):
+                delay = 0.5 * attempt
+                logger.warning(
+                    f"Transient embedding error for text: {text[:50]}... "
+                    f"retrying {attempt + 1}/{max_attempts} in {delay:.1f}s - {e}"
+                )
+                time.sleep(delay)
+                continue
+
+            logger.error(f"Error generating embedding for text: {text[:50]}... - {e}")
+            raise
 
 
 def clean_data(data: dict) -> dict:

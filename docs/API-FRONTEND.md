@@ -389,7 +389,34 @@ data: {"type": "error", "progress": 0, "message": "에러 메시지"}
 - FastAPI는 게스트 작업물에 `"임시 질문"` 제목으로 저장합니다.
 - 정식 `question_sets`, `questions` 테이블에는 아직 저장하지 않습니다.
 
-### 4-4. 게스트 작업물 회원 이관
+### 4-4. 게스트 질문 목록 조회
+```
+GET /ai/guest/questions?category=세특&difficulty=기본
+```
+**Request Header**
+```http
+Cookie: guest_id={uuid}
+```
+**Response**
+```json
+[
+  {
+    "questionId": 1,
+    "answerPoints": "전공 선택 동기, 관련 활동, 성과, 향후 계획",
+    "category": "세특",
+    "content": "이 활동에서 본인이 가장 주도적으로 해결한 문제는 무엇이었나요?",
+    "difficulty": "기본",
+    "evaluationCriteria": "전공에 대한 이해도, 준비 정도 평가",
+    "isBookmarked": false,
+    "modelAnswer": "저는 프로젝트 진행 중 ...",
+    "purpose": "전공 적합성 확인"
+  }
+]
+```
+- 게스트에는 정식 `questions.id`가 없어서 `questionId`는 저장 순서 기반 임시 값입니다.
+- `category`, `difficulty`는 선택 필터입니다.
+
+### 4-5. 게스트 작업물 회원 이관
 ```
 POST /ai/guest/migrate
 ```

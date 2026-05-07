@@ -1,6 +1,6 @@
 """LLM 호출 서비스 - Google Gemini 폴백 메커니즘 지원"""
 
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -40,30 +40,90 @@ class LLMService:
 
         # 폴백 모델 리스트 (Gemini만 지원)
         if provider == "gemini":
-            self.fallback_models = self.FALLBACK_MODELS
+            self.fallback_models = self._build_fallback_models(self.model)
         else:
             self.fallback_models = [self.model]
 
         logger.info(f"LLM Service initialized: {provider} / {self.model} (fallback: {self.fallback_models})")
 
-    def _create_llm_instance(self, model: str):
+    @classmethod
+    def _build_fallback_models(cls, primary_model: Optional[str]) -> List[str]:
+        """환경 설정 모델을 1순위로 두고 fallback 목록 중복을 제거합니다."""
+        models = []
+        if primary_model:
+            models.append(primary_model)
+        models.extend(cls.FALLBACK_MODELS)
+        return list(dict.fromkeys(models))
+
+    @staticmethod
+    def is_retryable_model_error(error: Exception) -> bool:
+        """모델 가용성/네트워크 계열 오류만 fallback 대상으로 분류합니다."""
+        if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
+            return True
+
+        error_text = str(error).lower()
+        error_type = type(error).__name__.lower()
+        retryable_markers = [
+            "503",
+            "unavailable",
+            "429",
+            "resource exhausted",
+            "quota",
+            "500",
+            "502",
+            "504",
+            "bad gateway",
+            "gateway timeout",
+            "timeout",
+            "timed out",
+            "connection",
+            "connection reset",
+            "connection aborted",
+            "connection error",
+            "temporarily unavailable",
+            "internal server error",
+        ]
+        return any(marker in error_text for marker in retryable_markers) or any(
+            marker in error_type
+            for marker in ["timeout", "connection", "serviceunavailable"]
+        )
+
+    def _create_llm_instance(
+        self,
+        model: str,
+        streaming: bool = True,
+        temperature: Optional[float] = None
+    ):
         """LLM 인스턴스 생성 (내부 헬퍼 메서드)"""
+        effective_temperature = self.temperature if temperature is None else temperature
         if self.provider == "gemini":
             return ChatGoogleGenerativeAI(
                 model=model,
                 api_key=settings.google_api_key,
-                temperature=self.temperature,
-                streaming=True
+                temperature=effective_temperature,
+                streaming=streaming
             )
         elif self.provider == "openai":
             return ChatOpenAI(
                 model=model,
                 api_key=getattr(settings, 'openai_api_key', None),
-                temperature=self.temperature,
-                streaming=True
+                temperature=effective_temperature,
+                streaming=streaming
             )
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
+
+    def _should_try_next_model(self, error: Exception, attempt_idx: int) -> bool:
+        return (
+            self.provider == "gemini"
+            and attempt_idx < len(self.fallback_models)
+            and self.is_retryable_model_error(error)
+        )
+
+    def _raise_all_models_failed(self, error: Exception) -> None:
+        if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
+            raise TimeoutError(str(error))
+        raise Exception(f"LLM 호출 실패 (모든 폴백 모델 실패): {str(error)}")
 
     async def astream_generate(
         self,
@@ -95,6 +155,7 @@ class LLMService:
         last_error = None
 
         for attempt_idx, model_name in enumerate(self.fallback_models, 1):
+            chunk_count = 0
             try:
                 logger.info(f"🔄 [LLM Fallback] Attempt {attempt_idx}/{len(self.fallback_models)}: {model_name}")
 
@@ -103,7 +164,6 @@ class LLMService:
                 stream = llm.astream(messages)
 
                 # 각 청크 가져오기에 타임아웃 설정
-                chunk_count = 0
                 while True:
                     try:
                         chunk = await asyncio.wait_for(stream.__anext__(), timeout=timeout)
@@ -123,17 +183,21 @@ class LLMService:
                 last_error = e
                 error_type = type(e).__name__
 
-                # 마지막 모델이 아니면 다음 모델로 시도
-                if attempt_idx < len(self.fallback_models):
+                # 이미 토큰이 나간 뒤의 fallback은 중복 질문을 만들 수 있으므로 즉시 실패 처리
+                if chunk_count > 0:
+                    logger.error(f"❌ [LLM Fallback] {model_name} failed after streaming began ({error_type})")
+                    raise
+
+                # transient 오류인 경우에만 다음 모델로 시도
+                if self._should_try_next_model(e, attempt_idx):
                     logger.warning(f"⚠️ [LLM Fallback] {model_name} failed ({error_type}), trying next model...")
                     await asyncio.sleep(0.5)  # 잠시 대기 후 재시도
-                else:
-                    # 마지막 모델도 실패하면 에러 전파
+                elif self.is_retryable_model_error(e):
                     logger.error(f"❌ [LLM Fallback] All models failed")
-                    if isinstance(e, TimeoutError):
-                        raise
-                    else:
-                        raise Exception(f"LLM 호출 실패 (모든 폴백 모델 실패): {str(e)}")
+                    self._raise_all_models_failed(e)
+                else:
+                    logger.error(f"❌ [LLM Fallback] Non-retryable error in {model_name} ({error_type})")
+                    raise
 
     async def acomplete_generate(
         self,
@@ -160,6 +224,122 @@ class LLMService:
         async for token in self.astream_generate(prompt, system_prompt, timeout=timeout):
             full_response += token
         return full_response
+
+    async def ainvoke_structured(
+        self,
+        prompt: str,
+        schema: Dict[str, Any],
+        system_prompt: Optional[str] = None,
+        timeout: int = 60,
+        temperature: Optional[float] = None
+    ) -> Any:
+        """LangChain structured output 호출에 Gemini 모델 fallback을 적용합니다."""
+        messages = []
+        if system_prompt:
+            messages.append(SystemMessage(content=system_prompt))
+        messages.append(HumanMessage(content=prompt))
+
+        for attempt_idx, model_name in enumerate(self.fallback_models, 1):
+            try:
+                logger.info(f"🔄 [Structured Fallback] Attempt {attempt_idx}/{len(self.fallback_models)}: {model_name}")
+                llm = self._create_llm_instance(
+                    model_name,
+                    streaming=False,
+                    temperature=temperature
+                )
+                structured_llm = llm.with_structured_output(schema=schema)
+                result = await asyncio.wait_for(
+                    structured_llm.ainvoke(messages),
+                    timeout=timeout
+                )
+                logger.info(f"✅ [Structured Fallback] Success with {model_name}")
+                return result
+
+            except (TimeoutError, Exception) as e:
+                error_type = type(e).__name__
+                if self._should_try_next_model(e, attempt_idx):
+                    logger.warning(f"⚠️ [Structured Fallback] {model_name} failed ({error_type}), trying next model...")
+                    await asyncio.sleep(0.5)
+                elif self.is_retryable_model_error(e):
+                    logger.error("❌ [Structured Fallback] All models failed")
+                    self._raise_all_models_failed(e)
+                else:
+                    logger.error(f"❌ [Structured Fallback] Non-retryable error in {model_name} ({error_type})")
+                    raise
+
+    async def agenai_generate_content(
+        self,
+        contents: List[Any],
+        config: Optional[Dict[str, Any]] = None,
+        timeout: int = 60,
+        fallback_on_any_model_error: bool = False
+    ) -> Any:
+        """google.genai generate_content 호출에 Gemini 모델 fallback을 적용합니다."""
+        if self.provider != "gemini":
+            raise ValueError("google.genai fallback is only supported for Gemini provider")
+
+        from google import genai
+
+        client = genai.Client(api_key=settings.google_api_key)
+
+        for attempt_idx, model_name in enumerate(self.fallback_models, 1):
+            try:
+                logger.info(f"🔄 [GenAI Fallback] Attempt {attempt_idx}/{len(self.fallback_models)}: {model_name}")
+                response = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=model_name,
+                        contents=contents,
+                        config=config or {}
+                    ),
+                    timeout=timeout
+                )
+                logger.info(f"✅ [GenAI Fallback] Success with {model_name}")
+                return response
+
+            except (TimeoutError, Exception) as e:
+                error_type = type(e).__name__
+                can_try_next = (
+                    self._should_try_next_model(e, attempt_idx)
+                    or (
+                        fallback_on_any_model_error
+                        and attempt_idx < len(self.fallback_models)
+                    )
+                )
+                if can_try_next:
+                    logger.warning(f"⚠️ [GenAI Fallback] {model_name} failed ({error_type}), trying next model...")
+                    await asyncio.sleep(0.5)
+                elif self.is_retryable_model_error(e):
+                    logger.error("❌ [GenAI Fallback] All models failed")
+                    self._raise_all_models_failed(e)
+                else:
+                    logger.error(f"❌ [GenAI Fallback] Non-retryable error in {model_name} ({error_type})")
+                    raise
+
+    async def aretry_transient(
+        self,
+        operation: Callable[[], Awaitable[Any]],
+        operation_name: str,
+        max_attempts: int = 3,
+        base_delay: float = 0.5
+    ) -> Any:
+        """모델 변경 없이 transient 오류만 짧게 재시도합니다."""
+        last_error = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return await operation()
+            except Exception as e:
+                last_error = e
+                if attempt >= max_attempts or not self.is_retryable_model_error(e):
+                    raise
+
+                delay = base_delay * attempt
+                logger.warning(
+                    f"⚠️ [{operation_name}] transient failure "
+                    f"({type(e).__name__}), retrying {attempt + 1}/{max_attempts} in {delay:.1f}s"
+                )
+                await asyncio.sleep(delay)
+
+        raise last_error
 
 
 # ==================== 프롬프트 생성 메서드 ====================
