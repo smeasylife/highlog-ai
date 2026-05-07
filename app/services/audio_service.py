@@ -12,6 +12,7 @@ from google import genai
 from google.genai import types as genai_types
 from google.cloud import texttospeech
 from config import settings
+from app.services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -102,12 +103,13 @@ class AudioService:
 
             logger.info("📤 Sending STT request to Gemini API...")
 
-            response = self.genai_client.models.generate_content(
-                model=self.stt_model,
+            response = await llm_service.agenai_generate_content(
                 contents=[prompt, audio_part],
                 config={
                     "temperature": 0.0
-                }
+                },
+                timeout=60,
+                fallback_on_any_model_error=True
             )
 
             # 4. 응답 검증

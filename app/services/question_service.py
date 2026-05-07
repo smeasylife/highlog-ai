@@ -107,12 +107,18 @@ class QuestionGenerationService:
     async def _embed_text(self, text: str) -> List[float]:
         """텍스트를 벡터로 임베딩 (768차원)"""
         try:
-            result = await self.client.aio.models.embed_content(
-                model=self.embedding_model,
-                contents=text,
-                config=self.types.EmbedContentConfig(
-                    output_dimensionality=768
+            async def embed_once():
+                return await self.client.aio.models.embed_content(
+                    model=self.embedding_model,
+                    contents=text,
+                    config=self.types.EmbedContentConfig(
+                        output_dimensionality=768
+                    )
                 )
+
+            result = await llm_service.aretry_transient(
+                embed_once,
+                operation_name="Question interview-data embedding"
             )
             return result.embeddings[0].values
         except Exception as e:
@@ -628,51 +634,34 @@ class QuestionGenerationService:
   ]
 }"""
 
-            # LLM 서비스로 구조화된 출력 생성 (타임아웃 30초 추가)
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            from langchain_core.messages import HumanMessage, SystemMessage
-            import asyncio
-
-            llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                api_key=settings.google_api_key,
-                temperature=0.7
-            )
-
-            # 구조화된 출력 설정
-            structured_llm = llm.with_structured_output(
-                schema={
-                    "type": "object",
-                    "properties": {
-                        "questions": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "content": {"type": "string"},
-                                    "difficulty": {"type": "string"},
-                                    "purpose": {"type": "string"},
-                                    "answer_points": {"type": "string"},
-                                    "model_answer": {"type": "string"},
-                                    "evaluation_criteria": {"type": "string"}
-                                },
-                                "required": ["content", "difficulty", "purpose", "answer_points", "model_answer", "evaluation_criteria"]
-                            }
+            structured_schema = {
+                "type": "object",
+                "properties": {
+                    "questions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "content": {"type": "string"},
+                                "difficulty": {"type": "string"},
+                                "purpose": {"type": "string"},
+                                "answer_points": {"type": "string"},
+                                "model_answer": {"type": "string"},
+                                "evaluation_criteria": {"type": "string"}
+                            },
+                            "required": ["content", "difficulty", "purpose", "answer_points", "model_answer", "evaluation_criteria"]
                         }
-                    },
-                    "required": ["questions"]
-                }
-            )
+                    }
+                },
+                "required": ["questions"]
+            }
 
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=prompt)
-            ]
-
-            # 타임아웃 설정 (60초) - 502 오류 즉시 감지용
-            result = await asyncio.wait_for(
-                structured_llm.ainvoke(messages),
-                timeout=60.0
+            result = await llm_service.ainvoke_structured(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                schema=structured_schema,
+                timeout=60,
+                temperature=0.7
             )
             questions = result.get("questions", [])
 
@@ -691,10 +680,10 @@ class QuestionGenerationService:
             error_msg = str(e)
             error_type = type(e).__name__
 
-            # 502 Bad Gateway 또는 네트워크 오류: 즉시 에러 전파
-            if "502" in error_msg or "Bad Gateway" in error_msg or "connection" in error_msg.lower():
-                logger.error(f"❌ Network error (502/connection) in {category}: {error_msg}")
-                raise Exception(f"Network error (502): {error_msg}")
+            # 모델 가용성 오류는 공통 fallback을 모두 소진한 뒤 상위 카테고리 실패로 전파
+            if llm_service.is_retryable_model_error(e) or "모든 폴백 모델 실패" in error_msg:
+                logger.error(f"❌ Retryable model error after fallback in {category}: {error_msg}")
+                raise
 
             error_msg = f"AI 응답 에러 발생: {str(e)}"
             logger.error(f"❌ {error_msg}")

@@ -69,7 +69,7 @@ data: {"status": "error", "message": "에러 메시지"}
 
 ## 3. 게스트 플로우 (Guest Record & Question Generation)
 
-회원가입 전 사용자가 생기부 파싱과 질문 생성을 먼저 진행할 수 있는 API입니다. 게스트 작업물은 `guest_work_items` 테이블의 JSON 컬럼에 임시 저장하고, 회원가입 완료 후 정식 회원 데이터로 이관합니다.
+회원가입 전 사용자가 생기부 파싱과 질문 생성을 먼저 진행할 수 있는 API입니다. 게스트 작업물은 `guest_work_items` 테이블의 JSON 컬럼에 임시 저장하고, 프론트엔드가 회원가입 완료 후 이관 API를 호출하면 정식 회원 데이터로 이관합니다.
 
 ### 3-1. 게스트 세션 발급
 
@@ -150,11 +150,43 @@ data: {"type": "error", "progress": 0, "message": "에러 메시지"}
 
 ---
 
+### GET /ai/guest/questions
+
+게스트가 생성한 질문 목록을 조회합니다. 게스트 세션은 `guest_id` HttpOnly 쿠키로 식별하며, 응답 형식은 기존 질문 목록 조회와 동일합니다.
+
+**Request Header:**
+```http
+Cookie: guest_id={uuid}
+```
+
+**Query Parameters (Optional):**
+- `category`: 카테고리 필터
+- `difficulty`: 난이도 필터 (`기본`, `심화`, `압박`, `basic`)
+
+**Response:**
+```json
+[
+  {
+    "questionId": 1,
+    "answerPoints": "전공 선택 동기, 관련 활동, 성과, 향후 계획",
+    "category": "세특",
+    "content": "이 활동에서 본인이 가장 주도적으로 해결한 문제는 무엇이었나요?",
+    "difficulty": "기본",
+    "evaluationCriteria": "전공에 대한 이해도, 준비 정도 평가",
+    "isBookmarked": false,
+    "modelAnswer": "저는 프로젝트 진행 중 ...",
+    "purpose": "전공 적합성 확인"
+  }
+]
+```
+
+---
+
 ### 3-4. 게스트 작업물 회원 이관
 
 ### POST /ai/guest/migrate
 
-Spring 회원가입 성공 후 서버 간 호출합니다. 프론트엔드는 HttpOnly 쿠키를 직접 읽지 않고, 회원가입 요청 시 브라우저가 `guest_id` 쿠키를 자동 전송하도록 `credentials`를 포함합니다. Spring은 회원 생성 후 `guest_id` 쿠키와 `userId`를 함께 FastAPI로 전달합니다.
+프론트엔드가 회원가입 성공 후 호출합니다. 프론트엔드는 HttpOnly 쿠키를 직접 읽지 않고, 브라우저가 `guest_id` 쿠키를 자동 전송하도록 `credentials`를 포함해 호출합니다. 요청 body에는 회원가입 응답으로 받은 `userId`를 전달합니다.
 
 **Request Header:**
 ```http

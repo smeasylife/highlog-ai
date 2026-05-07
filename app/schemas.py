@@ -1,5 +1,5 @@
 """Pydantic schemas for request/response validation"""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 
 
@@ -45,6 +45,13 @@ class GuestMigrateRequest(BaseModel):
 
 # ========== Response Schemas ==========
 
+class PresignedUrlResponse(BaseModel):
+    """S3 직접 업로드용 Presigned URL 응답"""
+    presignedUrl: str = Field(..., description="S3 직접 업로드용 Presigned URL")
+    s3Key: str = Field(..., description="업로드 후 등록 API에 전달할 S3 객체 키")
+    expiresIn: int = Field(..., description="Presigned URL 유효 시간(초)")
+
+
 class QuestionData(BaseModel):
     """생성된 질문 데이터"""
     category: str = Field(..., description="질문 카테고리 (출결, 성적, 세특, 창체, 행특)")
@@ -75,6 +82,21 @@ class GuestMigrateResponse(BaseModel):
     recordId: Optional[int] = Field(None, description="이관된 생기부 ID")
     questionSetId: Optional[int] = Field(None, description="이관된 질문 세트 ID")
     status: Optional[str] = Field(None, description="게스트 작업물 상태")
+
+
+class QuestionListItemResponse(BaseModel):
+    """질문 목록 조회 응답 아이템"""
+    model_config = ConfigDict(populate_by_name=True)
+
+    question_id: Optional[int] = Field(None, alias="questionId", description="질문 ID")
+    answer_points: Optional[str] = Field(None, alias="answerPoints", description="답변 포인트")
+    category: str = Field(..., description="질문 카테고리")
+    content: str = Field(..., description="질문 내용")
+    difficulty: str = Field(..., description="난이도")
+    evaluation_criteria: Optional[str] = Field(None, alias="evaluationCriteria", description="평가 기준")
+    is_bookmarked: bool = Field(False, alias="isBookmarked", description="북마크 여부")
+    model_answer: Optional[str] = Field(None, alias="modelAnswer", description="모범 답안")
+    purpose: Optional[str] = Field(None, description="질문 목적")
 
 
 # ========== Internal Schemas ==========

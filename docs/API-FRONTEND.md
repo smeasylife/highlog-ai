@@ -67,8 +67,8 @@ POST /api/auth/signup
 }
 ```
 - 게스트 작업물이 있는 경우에도 프론트는 `guestId`를 body에 넣지 않습니다.
-- 브라우저가 `guest_id` HttpOnly 쿠키를 회원가입 요청에 자동 포함할 수 있도록 `credentials`를 포함해 호출합니다.
-- Spring은 회원 생성 완료 후 `guest_id` 쿠키가 있으면 `POST /ai/guest/migrate`를 서버 간 호출합니다.
+- 회원가입 성공 후 게스트 작업물이 있으면 프론트가 `POST /ai/guest/migrate`를 호출합니다.
+- 이관 API 호출 시 브라우저가 `guest_id` HttpOnly 쿠키를 자동 전송하도록 `credentials`를 포함하고, body에는 회원가입 응답의 `userId`를 넣습니다.
 
 **Response**
 ```json
@@ -319,7 +319,7 @@ GET /api/bookmarks
 
 ### 흐름
 ```
-① 게스트 세션 발급(Set-Cookie) → ② Presigned URL 발급/S3 업로드 → ③ 게스트 생기부 파싱(Cookie) → ④ 게스트 질문 생성(Cookie) → ⑤ 회원가입 시 쿠키 자동 전송 → ⑥ Spring이 FastAPI 이관 API 호출
+① 게스트 세션 발급(Set-Cookie) → ② Presigned URL 발급/S3 업로드 → ③ 게스트 생기부 파싱(Cookie) → ④ 게스트 질문 생성(Cookie) → ⑤ 회원가입 성공 → ⑥ 프론트가 FastAPI 이관 API 호출(Cookie + userId)
 ```
 
 ### 4-1. 게스트 세션 발급
@@ -336,7 +336,7 @@ Set-Cookie: guest_id={uuid}; HttpOnly; Max-Age=604800; Path=/; SameSite=Lax
 }
 ```
 - 프론트는 `guestId`를 직접 보관하지 않습니다.
-- 이후 게스트 API 호출과 회원가입 API 호출은 쿠키가 전송되도록 `credentials`를 포함해야 합니다.
+- 이후 게스트 API 호출과 이관 API 호출은 쿠키가 전송되도록 `credentials`를 포함해야 합니다.
 
 ### 4-2. 게스트 생기부 파싱
 ```
@@ -389,14 +389,41 @@ data: {"type": "error", "progress": 0, "message": "에러 메시지"}
 - FastAPI는 게스트 작업물에 `"임시 질문"` 제목으로 저장합니다.
 - 정식 `question_sets`, `questions` 테이블에는 아직 저장하지 않습니다.
 
-### 4-4. 게스트 작업물 회원 이관
+### 4-4. 게스트 질문 목록 조회
+```
+GET /ai/guest/questions?category=세특&difficulty=기본
+```
+**Request Header**
+```http
+Cookie: guest_id={uuid}
+```
+**Response**
+```json
+[
+  {
+    "questionId": 1,
+    "answerPoints": "전공 선택 동기, 관련 활동, 성과, 향후 계획",
+    "category": "세특",
+    "content": "이 활동에서 본인이 가장 주도적으로 해결한 문제는 무엇이었나요?",
+    "difficulty": "기본",
+    "evaluationCriteria": "전공에 대한 이해도, 준비 정도 평가",
+    "isBookmarked": false,
+    "modelAnswer": "저는 프로젝트 진행 중 ...",
+    "purpose": "전공 적합성 확인"
+  }
+]
+```
+- 게스트에는 정식 `questions.id`가 없어서 `questionId`는 저장 순서 기반 임시 값입니다.
+- `category`, `difficulty`는 선택 필터입니다.
+
+### 4-5. 게스트 작업물 회원 이관
 ```
 POST /ai/guest/migrate
 ```
 **호출 주체**
-- Spring 회원가입 API가 회원 생성 성공 후 서버 간 호출합니다.
-- 프론트가 직접 호출하지 않습니다.
-- Spring은 회원가입 요청에서 받은 `guest_id` 쿠키를 FastAPI 호출에 전달합니다.
+- 프론트가 회원가입 API 성공 후 직접 호출합니다.
+- 프론트는 `guest_id`를 직접 읽지 않고, 브라우저가 쿠키를 자동 전송하도록 `credentials`를 포함합니다.
+- `userId`는 회원가입 API 응답에서 받은 값을 body에 넣어 전달합니다.
 
 **Request Header**
 ```http

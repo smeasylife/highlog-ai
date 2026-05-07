@@ -2,10 +2,11 @@
 import asyncio
 import io
 import logging
+import os
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,8 @@ from app.schemas import (
     GuestGenerateQuestionsRequest,
     GuestMigrateRequest,
     GuestMigrateResponse,
+    PresignedUrlResponse,
+    QuestionListItemResponse,
     GuestSessionResponse,
     SSEProgressEvent,
 )
@@ -36,6 +39,7 @@ router = APIRouter()
 
 GUEST_COOKIE_NAME = "guest_id"
 GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+GUEST_UPLOAD_URL_EXPIRES_IN = 300
 
 
 def _normalize_difficulty(difficulty: Optional[str]) -> str:
@@ -83,6 +87,34 @@ def _sse_complete(message: str = "완료되었습니다.") -> str:
     return f"data: {event.model_dump_json()}\n\n"
 
 
+def _build_guest_question_list(questions_json: list[dict]) -> list[QuestionListItemResponse]:
+    """게스트 질문 JSON을 질문 목록 조회 응답 형식으로 변환"""
+    question_list = []
+
+    for index, question in enumerate(questions_json, start=1):
+        question_list.append(
+            QuestionListItemResponse(
+                questionId=question.get("question_id", index),
+                answerPoints=question.get("answer_points"),
+                category=question.get("category", "기본"),
+                content=question.get("content", ""),
+                difficulty=question.get("difficulty", "기본"),
+                evaluationCriteria=question.get("evaluation_criteria"),
+                isBookmarked=question.get("is_bookmarked", False),
+                modelAnswer=question.get("model_answer"),
+                purpose=question.get("purpose")
+            )
+        )
+
+    return question_list
+
+
+def _sanitize_filename(filename: str) -> str:
+    """S3 key에 사용할 수 있도록 경로 성분을 제거하고 기본 파일명을 보정합니다."""
+    safe_filename = os.path.basename(filename).strip().replace(" ", "_")
+    return safe_filename or "record.pdf"
+
+
 @router.post("/session", response_model=GuestSessionResponse)
 async def create_guest_session(
     response: Response,
@@ -109,6 +141,50 @@ async def create_guest_session(
     )
 
     return GuestSessionResponse(message="게스트 세션이 발급되었습니다.")
+
+
+@router.get("/presigned-url", response_model=PresignedUrlResponse)
+async def get_guest_presigned_url(
+    fileName: str = Query(..., min_length=1, description="업로드할 PDF 파일명"),
+    guest_id: Optional[str] = Cookie(None, alias=GUEST_COOKIE_NAME),
+    db: Session = Depends(get_db)
+):
+    """로그인 없이 게스트 생기부 PDF 업로드용 Presigned URL을 발급합니다."""
+    if not guest_id:
+        raise HTTPException(status_code=400, detail="게스트 세션 쿠키가 없습니다.")
+
+    guest_work = db.query(GuestWorkItem).filter(
+        GuestWorkItem.guest_id == guest_id
+    ).first()
+
+    if not guest_work:
+        raise HTTPException(status_code=404, detail="게스트 세션을 찾을 수 없습니다.")
+
+    if guest_work.status == "MIGRATED":
+        raise HTTPException(status_code=400, detail="이미 회원 계정으로 이관된 게스트 작업물입니다.")
+
+    safe_filename = _sanitize_filename(fileName)
+    s3_key = f"guests/{guest_id}/records/{uuid.uuid4()}_{safe_filename}"
+
+    try:
+        presigned_url = s3_service.s3_client.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": s3_service.bucket_name,
+                "Key": s3_key,
+                "ContentType": "application/pdf",
+            },
+            ExpiresIn=GUEST_UPLOAD_URL_EXPIRES_IN,
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate guest presigned URL: {e}")
+        raise HTTPException(status_code=500, detail="Presigned URL 발급 중 오류가 발생했습니다.")
+
+    return PresignedUrlResponse(
+        presignedUrl=presigned_url,
+        s3Key=s3_key,
+        expiresIn=GUEST_UPLOAD_URL_EXPIRES_IN,
+    )
 
 
 @router.post("/records")
@@ -266,6 +342,42 @@ async def generate_guest_questions(
             "X-Accel-Buffering": "no"
         }
     )
+
+
+@router.get("/questions", response_model=list[QuestionListItemResponse])
+async def get_guest_questions(
+    category: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    guest_id: Optional[str] = Cookie(None, alias=GUEST_COOKIE_NAME),
+    db: Session = Depends(get_db)
+):
+    """게스트가 생성한 질문 목록을 질문 목록 조회와 동일한 형식으로 반환합니다."""
+    if not guest_id:
+        raise HTTPException(status_code=400, detail="게스트 세션 쿠키가 없습니다.")
+
+    guest_work = db.query(GuestWorkItem).filter(
+        GuestWorkItem.guest_id == guest_id
+    ).first()
+
+    if not guest_work:
+        raise HTTPException(status_code=404, detail="게스트 세션을 찾을 수 없습니다.")
+
+    if not guest_work.questions_json:
+        raise HTTPException(status_code=400, detail="질문 생성이 완료되지 않았습니다.")
+
+    questions = _build_guest_question_list(guest_work.questions_json)
+
+    if category:
+        questions = [question for question in questions if question.category == category]
+
+    if difficulty:
+        normalized_difficulty = _normalize_difficulty(difficulty)
+        questions = [
+            question for question in questions
+            if question.difficulty == normalized_difficulty
+        ]
+
+    return questions
 
 
 async def guest_question_generation_stream(
