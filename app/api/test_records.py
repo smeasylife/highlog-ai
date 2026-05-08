@@ -10,11 +10,10 @@ import io
 import os
 
 from app.database import get_db
-from app.models import GuestWorkItem, StudentRecord
+from app.models import GuestWorkItem, StudentRecord, User
 from app.services.vector_service import vector_service
 from app.services.question_service import question_service
 from app.schemas import SSEProgressEvent, GenerateQuestionsRequest
-from app.core.dependencies import get_current_user, CurrentUser
 
 import logging
 
@@ -64,7 +63,6 @@ async def send_progress(progress: int, queue: asyncio.Queue):
 
 @router.post("/test/vectorize-local-pdf")
 async def test_vectorize_local_pdf(
-    current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -86,9 +84,11 @@ async def test_vectorize_local_pdf(
 
         logger.info(f"📄 Found local PDF: {pdf_path}")
 
+        test_user = get_or_create_local_test_user(db)
+
         # 2. DB에 생기부 저장 (S3 방식과 동일)
         record = StudentRecord(
-            user_id=current_user.user_id,
+            user_id=test_user.id,
             title="테스트 생활기록부 (로컬 PDF)",
             filename="highschool.pdf",
             s3_key="local_test/highschool.pdf",  # 테스트용 가상 S3 키
@@ -116,6 +116,27 @@ async def test_vectorize_local_pdf(
     except Exception as e:
         logger.error(f"Error creating test record: {e}")
         raise HTTPException(status_code=500, detail=f"생기부 등록 중 오류가 발생했습니다: {str(e)}")
+
+
+def get_or_create_local_test_user(db: Session) -> User:
+    """로컬 PDF SSE 테스트용 사용자 반환."""
+    email = "local-pdf-test@example.com"
+    user = db.query(User).filter(User.email == email).first()
+    if user:
+        return user
+
+    user = User(
+        email=email,
+        password="local-test",
+        name="로컬 PDF 테스트",
+        role="USER",
+        marketing_agreement=False
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    logger.info(f"✅ Created local PDF test user: id={user.id}")
+    return user
 
 
 @router.post("/test/vectorize-uploaded-pdf")
@@ -386,13 +407,12 @@ async def _process_local_pdf_vectorization(
     local_db = SessionLocal()
     try:
         # 1. 로컬 PDF 파일 읽기 (S3 다운로드 대신 로컬 파일 읽기)
-        await send_progress(10, progress_queue)
+        await send_progress(5, progress_queue)
         logger.info(f"📄 Reading local PDF: {pdf_path}")
 
         with open(pdf_path, 'rb') as f:
             pdf_bytes = io.BytesIO(f.read())
 
-        await send_progress(20, progress_queue)
         logger.info(f"📄 PDF file size: {len(pdf_bytes.getvalue())} bytes")
 
         # 진행률 콜백 래퍼 함수
@@ -457,11 +477,9 @@ async def _process_uploaded_pdf_vectorization(
         (성공 여부, 메시지, 청크 JSON 배열)
     """
     try:
-        await send_progress(10, progress_queue)
-
         pdf_bytes = io.BytesIO(pdf_data)
 
-        await send_progress(20, progress_queue)
+        await send_progress(5, progress_queue)
         logger.info(f"📄 Uploaded PDF file size: {len(pdf_data)} bytes")
 
         async def progress_wrapper(progress: int):

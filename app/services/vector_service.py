@@ -71,15 +71,16 @@ class VectorService:
             total_pages = len(doc)
             doc.close()
             pdf_bytes.seek(0)  # 다시 처음으로
+            pdf_data = pdf_bytes.getvalue()
 
             batch_size = 2  # 2페이지씩 배치
             total_batches = (total_pages + batch_size - 1) // batch_size
 
             logger.info(f"📄 {total_pages} pages → {total_batches} batches ({batch_size} pages/batch)")
 
-            # PDF 파싱 시작 (30%)
+            # PDF 파싱 시작 (10%)
             if progress_callback:
-                await progress_callback(30)
+                await progress_callback(10)
 
             # 2. 모든 배치를 동시에 처리 (병렬 처리) ⚡
             all_chunks = []
@@ -87,36 +88,54 @@ class VectorService:
 
             logger.info("🤖 AI Chunking (Parallel Processing)...")
 
+            async def parse_batch(batch_index, start_page, end_page, pages_in_batch):
+                try:
+                    result = await self._parse_pdf_batch_with_gemini(
+                        io.BytesIO(pdf_data),
+                        pages_in_batch
+                    )
+                    return batch_index, start_page, end_page, result, None
+                except Exception as e:
+                    return batch_index, start_page, end_page, None, e
+
             # 모든 배치 태스크 생성
             tasks = []
             for i in range(total_batches):
                 start_page = i * batch_size
                 end_page = min(start_page + batch_size, total_pages)
                 pages_in_batch = list(range(start_page, end_page))
-                tasks.append(self._parse_pdf_batch_with_gemini(
-                    pdf_bytes, pages_in_batch
+                tasks.append(asyncio.create_task(
+                    parse_batch(i, start_page, end_page, pages_in_batch)
                 ))
 
-            # 동시 실행 (병렬 처리)
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            completed_batches = 0
+            batch_results = [None] * total_batches
 
-            # 결과 집계
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    logger.warning(f"⚠️  [{i+1}/{total_batches}] Failed: {str(result)[:80]}... - Skipping")
-                    failed_batches.append(i + 1)
+            for completed_task in asyncio.as_completed(tasks):
+                batch_index, start_page, end_page, result, error = await completed_task
+                completed_batches += 1
+
+                if error:
+                    logger.warning(f"⚠️  [{batch_index+1}/{total_batches}] Failed: {str(error)[:80]}... - Skipping")
+                    failed_batches.append(batch_index + 1)
                 elif result:
-                    all_chunks.extend(result)
-                    start_page = i * batch_size
-                    end_page = min(start_page + batch_size, total_pages)
-                    logger.info(f"📦 [{i+1}/{total_batches}] {len(result)} chunks (pages {start_page+1}-{end_page})")
+                    batch_results[batch_index] = result
+                    logger.info(f"📦 [{batch_index+1}/{total_batches}] {len(result)} chunks (pages {start_page+1}-{end_page})")
                 else:
-                    logger.warning(f"⚠️  [{i+1}/{total_batches}] No chunks")
-                    failed_batches.append(i + 1)
+                    logger.warning(f"⚠️  [{batch_index+1}/{total_batches}] No chunks")
+                    failed_batches.append(batch_index + 1)
 
-            # 진행률 업데이트 (청킹 완료: 50%)
+                if progress_callback:
+                    chunk_progress = 10 + int((completed_batches / total_batches) * 70)
+                    await progress_callback(min(chunk_progress, 80))
+
+            for result in batch_results:
+                if result:
+                    all_chunks.extend(result)
+
+            # 진행률 업데이트 (청킹 완료: 80%)
             if progress_callback:
-                await progress_callback(50)
+                await progress_callback(80)
 
             # 실패한 배치가 있어도 계속 진행 (부분 성공 허용)
             if failed_batches:
@@ -128,7 +147,7 @@ class VectorService:
 
             # 3. 배치 임베딩 & 벌크 DB 삽입 🔥
             if progress_callback:
-                await progress_callback(55)  # 임베딩 시작
+                await progress_callback(85)  # 임베딩 시작
 
             logger.info(f"🔄 Batch Embedding {len(all_chunks)} chunks...")
 
@@ -145,10 +164,10 @@ class VectorService:
                     embeddings = await self._embed_batch(texts)
                     all_embeddings.extend(embeddings)
                     
-                    # 진행률 업데이트 (55-90%)
+                    # 진행률 업데이트 (85-95%)
                     if progress_callback:
-                        embed_progress = 55 + int(((i + batch_size) / len(all_chunks)) * 35)
-                        await progress_callback(min(embed_progress, 90))
+                        embed_progress = 85 + int(((i + batch_size) / len(all_chunks)) * 10)
+                        await progress_callback(min(embed_progress, 95))
                         
                 except Exception as e:
                     logger.warning(f"⚠️  Batch {i//batch_size + 1} embedding failed: {str(e)[:50]}")
@@ -161,6 +180,10 @@ class VectorService:
                             logger.debug(f"   ❌ Individual chunk failed: {str(e2)[:50]}")
                             all_embeddings.append(None)  # 실패 표시
                             failed_embeddings += 1
+
+                    if progress_callback:
+                        embed_progress = 85 + int(((i + batch_size) / len(all_chunks)) * 10)
+                        await progress_callback(min(embed_progress, 95))
 
             # 4. 벌크 DB 삽입 (한 번에 저장) 🚀
             logger.info("💾 Bulk inserting to database...")
@@ -239,47 +262,66 @@ class VectorService:
             logger.info(f"📄 {total_pages} pages → {total_batches} batches ({batch_size} pages/batch)")
 
             if progress_callback:
-                await progress_callback(30)
+                await progress_callback(10)
 
             all_chunks = []
             failed_batches = []
 
             logger.info("🤖 Guest AI Chunking (Parallel Processing)...")
 
+            async def parse_guest_batch(batch_index, start_page, end_page, pages_in_batch):
+                try:
+                    result = await self._parse_pdf_batch_with_gemini(
+                        io.BytesIO(pdf_data),
+                        pages_in_batch
+                    )
+                    return batch_index, start_page, end_page, result, None
+                except Exception as e:
+                    return batch_index, start_page, end_page, None, e
+
             tasks = []
             for i in range(total_batches):
                 start_page = i * batch_size
                 end_page = min(start_page + batch_size, total_pages)
                 pages_in_batch = list(range(start_page, end_page))
-                tasks.append(self._parse_pdf_batch_with_gemini(
-                    io.BytesIO(pdf_data),
-                    pages_in_batch
+                tasks.append(asyncio.create_task(
+                    parse_guest_batch(i, start_page, end_page, pages_in_batch)
                 ))
 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            completed_batches = 0
+            batch_results = [None] * total_batches
 
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    logger.warning(f"⚠️  Guest batch {i + 1}/{total_batches} failed: {str(result)[:80]}")
-                    failed_batches.append(i + 1)
+            for completed_task in asyncio.as_completed(tasks):
+                batch_index, start_page, end_page, result, error = await completed_task
+                completed_batches += 1
+
+                if error:
+                    logger.warning(f"⚠️  Guest batch {batch_index + 1}/{total_batches} failed: {str(error)[:80]}")
+                    failed_batches.append(batch_index + 1)
                 elif result:
-                    all_chunks.extend(result)
-                    start_page = i * batch_size
-                    end_page = min(start_page + batch_size, total_pages)
-                    logger.info(f"📦 Guest batch {i + 1}/{total_batches}: {len(result)} chunks (pages {start_page + 1}-{end_page})")
+                    batch_results[batch_index] = result
+                    logger.info(f"📦 Guest batch {batch_index + 1}/{total_batches}: {len(result)} chunks (pages {start_page + 1}-{end_page})")
                 else:
-                    logger.warning(f"⚠️  Guest batch {i + 1}/{total_batches}: no chunks")
-                    failed_batches.append(i + 1)
+                    logger.warning(f"⚠️  Guest batch {batch_index + 1}/{total_batches}: no chunks")
+                    failed_batches.append(batch_index + 1)
+
+                if progress_callback:
+                    chunk_progress = 10 + int((completed_batches / total_batches) * 70)
+                    await progress_callback(min(chunk_progress, 80))
+
+            for result in batch_results:
+                if result:
+                    all_chunks.extend(result)
 
             if progress_callback:
-                await progress_callback(50)
+                await progress_callback(80)
 
             if not all_chunks:
                 logger.error("No guest chunks generated from any batch")
                 return False, "Failed to generate chunks from all batches", []
 
             if progress_callback:
-                await progress_callback(55)
+                await progress_callback(85)
 
             logger.info(f"🔄 Guest Batch Embedding {len(all_chunks)} chunks...")
 
@@ -296,8 +338,8 @@ class VectorService:
                     all_embeddings.extend(embeddings)
 
                     if progress_callback:
-                        embed_progress = 55 + int(((i + embedding_batch_size) / len(all_chunks)) * 35)
-                        await progress_callback(min(embed_progress, 90))
+                        embed_progress = 85 + int(((i + embedding_batch_size) / len(all_chunks)) * 10)
+                        await progress_callback(min(embed_progress, 95))
 
                 except Exception as e:
                     logger.warning(f"⚠️  Guest embedding batch {i // embedding_batch_size + 1} failed: {str(e)[:50]}")
@@ -309,6 +351,10 @@ class VectorService:
                             logger.debug(f"   ❌ Guest individual chunk failed: {str(e2)[:50]}")
                             all_embeddings.append(None)
                             failed_embeddings += 1
+
+                    if progress_callback:
+                        embed_progress = 85 + int(((i + embedding_batch_size) / len(all_chunks)) * 10)
+                        await progress_callback(min(embed_progress, 95))
 
             record_chunks_json = []
             for idx, chunk_data in enumerate(all_chunks):
