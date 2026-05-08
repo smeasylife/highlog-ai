@@ -149,7 +149,6 @@ class QuestionGenerationService:
         # 2. 병렬 처리 (병렬로 모든 태스크 실행)
         logger.info(f"🚀 Starting parallel processing for {len(self.CATEGORIES)} categories")
 
-        all_questions = []
         processed_categories = []
         failed_categories = []
 
@@ -157,65 +156,85 @@ class QuestionGenerationService:
         base_progress = 10
         progress_per_category = (80 - base_progress) // total_categories
 
+        async def process_category(category_index, category):
+            try:
+                result = await self._process_single_category(
+                    record_id=record_id,
+                    category=category,
+                    target_school=target_school,
+                    target_major=target_major,
+                    interview_type=interview_type
+                )
+                return category_index, category, result, None
+            except Exception as e:
+                return category_index, category, None, e
+
         # 모든 카테고리 태스크 생성
         tasks = [
-            self._process_single_category(
-                record_id=record_id,
-                category=category,
-                target_school=target_school,
-                target_major=target_major,
-                interview_type=interview_type
+            asyncio.create_task(
+                process_category(category_index, category)
             )
-            for category in self.CATEGORIES
+            for category_index, category in enumerate(self.CATEGORIES)
         ]
 
-        # 병렬 실행 (return_exceptions=True로 예외를 결과로 반환)
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        completed_count = 0
+        category_results = [None] * total_categories
 
-        # 결과 처리
-        for i, result in enumerate(results):
-            category = self.CATEGORIES[i]
-
+        for completed_task in asyncio.as_completed(tasks):
+            category_index, category, result, error = await completed_task
+            completed_count += 1
             # 진행률 업데이트
-            completed_count = i + 1
             progress = base_progress + completed_count * progress_per_category
 
             try:
-                if isinstance(result, Exception):
-                    logger.error(f"❌ [{category}] Failed with exception: {str(result)[:80]}")
+                if error:
+                    logger.error(f"❌ [{category}] Failed with exception: {str(error)[:80]}")
                     failed_categories.append(category)
+                    status_msg = f"{category} 영역 실패 ({completed_count}/{total_categories})"
                 elif result and result.get('success'):
                     questions = result.get('questions', [])
-                    all_questions.extend(questions)
+                    category_results[category_index] = questions
                     processed_categories.append(category)
                     logger.info(f"✅ [{category}] Generated {len(questions)} questions")
 
                     # 완료될 때마다 진행률 실시간 전송
                     status_msg = f"{category} 영역 완료 ({completed_count}/{total_categories})"
-                    yield {
-                        "progress": min(progress, 85),
-                        "status_message": status_msg,
-                        "current_category": category,
-                        "completed_count": completed_count,
-                        "total_count": total_categories
-                    }
                 else:
                     logger.warning(f"⚠️ [{category}] No questions generated")
                     failed_categories.append(category)
 
                     # 실패 시에도 진행률 전송
                     status_msg = f"{category} 영역 실패 ({completed_count}/{total_categories})"
-                    yield {
-                        "progress": min(progress, 85),
-                        "status_message": status_msg,
-                        "current_category": category,
-                        "completed_count": completed_count,
-                        "total_count": total_categories
-                    }
+
+                yield {
+                    "progress": min(progress, 85),
+                    "status_message": status_msg,
+                    "current_category": category,
+                    "completed_count": completed_count,
+                    "total_count": total_categories
+                }
 
             except Exception as e:
                 logger.error(f"❌ [{category}] Failed with exception: {str(e)[:80]}")
                 failed_categories.append(category)
+                status_msg = f"{category} 영역 실패 ({completed_count}/{total_categories})"
+                yield {
+                    "progress": min(progress, 85),
+                    "status_message": status_msg,
+                    "current_category": category,
+                    "completed_count": completed_count,
+                    "total_count": total_categories
+                }
+
+        all_questions = [
+            question
+            for questions in category_results
+            if questions
+            for question in questions
+        ]
+        ordered_failed_categories = [
+            category for category in self.CATEGORIES if category in failed_categories
+        ]
 
         # 3. 집계 완료
         yield {
@@ -224,9 +243,9 @@ class QuestionGenerationService:
         }
 
         # 4. 최종 완료
-        if failed_categories:
-            logger.warning(f"⚠️ Failed categories: {failed_categories}")
-            final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문 생성. {len(failed_categories)}개 카테고리({', '.join(failed_categories)}) 실패로 건너뜀."
+        if ordered_failed_categories:
+            logger.warning(f"⚠️ Failed categories: {ordered_failed_categories}")
+            final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문 생성. {len(ordered_failed_categories)}개 카테고리({', '.join(ordered_failed_categories)}) 실패로 건너뜀."
         else:
             logger.info(f"✅ All categories succeeded. Total questions: {len(all_questions)}")
             final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문이 생성되었습니다."
@@ -257,7 +276,6 @@ class QuestionGenerationService:
             "status_message": "질문 생성을 시작합니다 (병렬 처리 중...)"
         }
 
-        all_questions = []
         processed_categories = []
         failed_categories = []
 
@@ -265,32 +283,42 @@ class QuestionGenerationService:
         base_progress = 10
         progress_per_category = (80 - base_progress) // total_categories
 
+        async def process_guest_category(category_index, category):
+            try:
+                result = await self._process_single_category_from_chunks(
+                    record_chunks=record_chunks,
+                    category=category,
+                    target_school=target_school,
+                    target_major=target_major,
+                    interview_type=interview_type
+                )
+                return category_index, category, result, None
+            except Exception as e:
+                return category_index, category, None, e
+
         tasks = [
-            self._process_single_category_from_chunks(
-                record_chunks=record_chunks,
-                category=category,
-                target_school=target_school,
-                target_major=target_major,
-                interview_type=interview_type
+            asyncio.create_task(
+                process_guest_category(category_index, category)
             )
-            for category in self.CATEGORIES
+            for category_index, category in enumerate(self.CATEGORIES)
         ]
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        completed_count = 0
+        category_results = [None] * total_categories
 
-        for i, result in enumerate(results):
-            category = self.CATEGORIES[i]
-            completed_count = i + 1
+        for completed_task in asyncio.as_completed(tasks):
+            category_index, category, result, error = await completed_task
+            completed_count += 1
             progress = base_progress + completed_count * progress_per_category
 
             try:
-                if isinstance(result, Exception):
-                    logger.error(f"❌ Guest [{category}] failed with exception: {str(result)[:80]}")
+                if error:
+                    logger.error(f"❌ Guest [{category}] failed with exception: {str(error)[:80]}")
                     failed_categories.append(category)
                     status_msg = f"{category} 영역 실패 ({completed_count}/{total_categories})"
                 elif result and result.get("success"):
                     questions = result.get("questions", [])
-                    all_questions.extend(questions)
+                    category_results[category_index] = questions
                     processed_categories.append(category)
                     logger.info(f"✅ Guest [{category}] Generated {len(questions)} questions")
                     status_msg = f"{category} 영역 완료 ({completed_count}/{total_categories})"
@@ -310,15 +338,33 @@ class QuestionGenerationService:
             except Exception as e:
                 logger.error(f"❌ Guest [{category}] failed while processing result: {str(e)[:80]}")
                 failed_categories.append(category)
+                status_msg = f"{category} 영역 실패 ({completed_count}/{total_categories})"
+                yield {
+                    "progress": min(progress, 85),
+                    "status_message": status_msg,
+                    "current_category": category,
+                    "completed_count": completed_count,
+                    "total_count": total_categories
+                }
+
+        all_questions = [
+            question
+            for questions in category_results
+            if questions
+            for question in questions
+        ]
+        ordered_failed_categories = [
+            category for category in self.CATEGORIES if category in failed_categories
+        ]
 
         yield {
             "progress": 90,
             "status_message": f"모든 영역 처리 완료! {len(processed_categories)}/{total_categories} 카테고리 성공"
         }
 
-        if failed_categories:
-            logger.warning(f"⚠️ Guest failed categories: {failed_categories}")
-            final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문 생성. {len(failed_categories)}개 카테고리({', '.join(failed_categories)}) 실패로 건너뜀."
+        if ordered_failed_categories:
+            logger.warning(f"⚠️ Guest failed categories: {ordered_failed_categories}")
+            final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문 생성. {len(ordered_failed_categories)}개 카테고리({', '.join(ordered_failed_categories)}) 실패로 건너뜀."
         else:
             logger.info(f"✅ Guest all categories succeeded. Total questions: {len(all_questions)}")
             final_msg = f"질문 생성 완료! 총 {len(all_questions)}개 질문이 생성되었습니다."

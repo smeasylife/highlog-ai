@@ -235,15 +235,13 @@ async def guest_record_creation_stream(
             yield _sse_error("게스트 세션을 찾을 수 없습니다.")
             return
 
-        yield _sse_event(10)
+        yield _sse_event(5)
 
         file_stream = s3_service.get_file_stream(request.s3Key)
         if not file_stream:
             raise Exception("S3 PDF download failed")
 
         pdf_bytes = io.BytesIO(file_stream.read())
-
-        yield _sse_event(20)
 
         progress_queue = asyncio.Queue()
 

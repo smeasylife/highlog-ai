@@ -212,7 +212,7 @@ async def _process_vectorization_with_progress(
     local_db = SessionLocal()
     try:
         # 1. S3에서 PDF 다운로드
-        await send_progress(10, progress_queue)
+        await send_progress(5, progress_queue)
 
         import io
         from app.services.s3_service import s3_service
@@ -223,8 +223,6 @@ async def _process_vectorization_with_progress(
             raise Exception("S3 PDF download failed")
 
         pdf_bytes = io.BytesIO(file_stream.read())
-
-        await send_progress(20, progress_queue)
 
         # 진행률 콜백 래퍼 함수
         async def progress_wrapper(progress: int):
@@ -418,4 +416,3 @@ async def generate_questions(
     except Exception as e:
         logger.error(f"Error generating questions: {e}")
         raise HTTPException(status_code=500, detail="질문 생성 중 오류가 발생했습니다.")
-
