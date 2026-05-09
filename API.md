@@ -91,7 +91,32 @@ Set-Cookie: guest_id={uuid}; HttpOnly; Max-Age=604800; Path=/; SameSite=Lax
 
 ---
 
-### 3-2. 게스트 생기부 파싱
+### 3-2. 게스트 업로드 URL 발급
+
+### GET /ai/guest/presigned-url
+
+게스트 생기부 PDF를 S3에 직접 업로드할 수 있도록 Presigned URL을 발급합니다. 게스트 세션은 `guest_id` HttpOnly 쿠키로 식별합니다.
+
+**Request Header:**
+```http
+Cookie: guest_id={uuid}
+```
+
+**Query Parameters:**
+- `fileName`: 업로드할 PDF 파일명
+
+**Response:**
+```json
+{
+  "presignedUrl": "https://s3.amazonaws.com/bucket/guests/{guest_id}/records/{uuid}_생활기록부.pdf?...",
+  "s3Key": "guests/{guest_id}/records/{uuid}_생활기록부.pdf",
+  "expiresIn": 300
+}
+```
+
+---
+
+### 3-3. 게스트 생기부 파싱
 
 ### POST /ai/guest/records
 
@@ -120,7 +145,7 @@ data: {"type": "error", "progress": 0, "message": "에러 메시지"}
 
 ---
 
-### 3-3. 게스트 질문 생성
+### 3-4. 게스트 질문 생성
 
 ### POST /ai/guest/questions
 
@@ -149,6 +174,8 @@ data: {"type": "error", "progress": 0, "message": "에러 메시지"}
 ```
 
 ---
+
+### 3-5. 게스트 질문 목록 조회
 
 ### GET /ai/guest/questions
 
@@ -182,7 +209,7 @@ Cookie: guest_id={uuid}
 
 ---
 
-### 3-4. 게스트 작업물 회원 이관
+### 3-6. 게스트 작업물 회원 이관
 
 ### POST /ai/guest/migrate
 
@@ -319,6 +346,10 @@ response_time: 45
   "transcript": "동아리 부장으로서 팀원 간의 의견 차이를 조율했습니다.",
   "next_question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?",
   "audio_url": "https://s3.../question_1.mp3",
+  "mouthCues": [
+    { "start": 0.00, "end": 0.08, "value": "X" },
+    { "start": 0.08, "end": 0.21, "value": "D" }
+  ],
   "sub_topic": "리더십",
   "remaining_time": 480,
   "is_finished": false
@@ -342,6 +373,7 @@ response_time: 45
 1. **STT**: Gemini 2.5 Flash Native Audio → 텍스트 변환
 2. **AI Processing**: 답변 분석 → 질문 생성
 3. **TTS**: Google Cloud TTS → 음성 변환 → S3 업로드
+4. **Lip Sync**: MP3 → WAV 변환(ffmpeg) → Rhubarb(`phonetic`, `A-F/X`) → `mouthCues` 반환
 
 ---
 

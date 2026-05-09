@@ -138,11 +138,23 @@ class AudioChatRequest(BaseModel):
     pass  # audio 파일은 Form 데이터로 처리
 
 
+class MouthCue(BaseModel):
+    """Rhubarb Lip Sync mouth cue"""
+    model_config = ConfigDict(from_attributes=True)
+
+    start: float = Field(..., description="입 모양 시작 시간(초)")
+    end: float = Field(..., description="입 모양 종료 시간(초)")
+    value: str = Field(..., description="Rhubarb mouth shape code (A-F, X)")
+
+
 class AudioInterviewResponse(BaseModel):
     """오디오 면접 응답"""
+    model_config = ConfigDict(populate_by_name=True)
+
     transcript: str = Field(..., description="변환된 텍스트")
     next_question: str = Field(..., description="다음 질문 텍스트")
     audio_url: Optional[str] = Field(None, description="다음 질문 음성 파일 URL")
+    mouth_cues: List[MouthCue] = Field(default_factory=list, alias="mouthCues", description="Rhubarb 입 모양 타이밍")
     sub_topic: Optional[str] = Field(None, description="현재 주제")
     remaining_time: int = Field(..., description="남은 시간 (초)")
     is_finished: bool = Field(False, description="면접 종료 여부")

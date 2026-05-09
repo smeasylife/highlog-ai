@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-2.5-flash"
     openai_api_key: str = ""  # OpenAI 사용 시 필요
 
+    # Rhubarb Lip Sync 설정
+    rhubarb_binary_path: str = "rhubarb"
+    rhubarb_timeout_seconds: int = 20
+    rhubarb_extended_shapes: str = "X"
+
     # LangGraph (선택사항)
     langchain_tracing_v2: bool = False
     langchain_api_key: str = ""

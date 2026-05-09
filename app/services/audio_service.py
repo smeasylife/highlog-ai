@@ -4,17 +4,40 @@ STT: Gemini 2.5 Flash Native Audio
 TTS: Google Cloud Text-to-Speech
 """
 import logging
-import io
+import asyncio
+import json
 import os
+import subprocess
+import tempfile
 import uuid
-from typing import Optional
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Optional
 from google import genai
 from google.genai import types as genai_types
-from google.cloud import texttospeech
+try:
+    from google.cloud import texttospeech
+except ImportError:
+    texttospeech = None
 from config import settings
 from app.services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_MOUTH_CUE_VALUES = {"A", "B", "C", "D", "E", "F", "X"}
+
+
+@dataclass(frozen=True)
+class MouthCue:
+    start: float
+    end: float
+    value: str
+
+
+@dataclass(frozen=True)
+class TTSResult:
+    audio_url: Optional[str]
+    mouth_cues: list[MouthCue] = field(default_factory=list)
 
 
 class AudioService:
@@ -27,6 +50,11 @@ class AudioService:
 
         # Google Cloud TTS 클라이언트
         try:
+            if texttospeech is None:
+                self.tts_client = None
+                logger.warning("⚠️ [TTS Init] google-cloud-texttospeech is not installed. TTS disabled.")
+                return
+
             credentials_path = settings.google_application_credentials
 
             # 디버깅: 환경변수 값 확인
@@ -146,7 +174,7 @@ class AudioService:
         user_id: str,
         language_code: str = "ko-KR",
         voice_name: Optional[str] = None
-    ) -> Optional[str]:
+    ) -> Optional[TTSResult]:
         """
         텍스트를 음성 파일로 변환하고 S3 URL 반환 (운영용)
 
@@ -157,7 +185,7 @@ class AudioService:
             voice_name: 음성 이름 (None이면 기본 음성 사용)
 
         Returns:
-            S3 업로드된 음성 파일 URL (실패 시 None)
+            S3 업로드된 음성 파일 URL과 Rhubarb mouth cues (실패 시 None)
         """
         try:
             if not self.tts_client:
@@ -215,11 +243,126 @@ class AudioService:
             )
 
             logger.info(f"TTS audio uploaded to S3: {audio_url}")
-            return audio_url
+
+            mouth_cues = await self.generate_mouth_cues(
+                audio_bytes=response.audio_content,
+                dialog_text=text
+            )
+
+            return TTSResult(audio_url=audio_url, mouth_cues=mouth_cues)
 
         except Exception as e:
             logger.error(f"TTS failed: {e}")
             return None
+
+    async def generate_mouth_cues(
+        self,
+        audio_bytes: bytes,
+        dialog_text: str
+    ) -> list[MouthCue]:
+        """TTS MP3 바이트를 Rhubarb 입력용 WAV로 변환하고 mouthCues를 생성합니다."""
+        if not audio_bytes:
+            return []
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="rhubarb_lipsync_") as temp_dir:
+                temp_path = Path(temp_dir)
+                mp3_path = temp_path / "input.mp3"
+                wav_path = temp_path / "output.wav"
+                dialog_path = temp_path / "dialog.txt"
+                output_path = temp_path / "output.json"
+
+                mp3_path.write_bytes(audio_bytes)
+                dialog_path.write_text(dialog_text or "", encoding="utf-8")
+
+                await asyncio.to_thread(self._convert_mp3_to_wav, mp3_path, wav_path)
+                await asyncio.to_thread(self._run_rhubarb, wav_path, dialog_path, output_path)
+
+                return self._parse_rhubarb_output(output_path)
+
+        except FileNotFoundError as e:
+            logger.warning(f"Rhubarb lip sync skipped because a required executable was not found: {e}")
+            return []
+        except subprocess.TimeoutExpired:
+            logger.warning("Rhubarb lip sync timed out; returning audio without mouth cues")
+            return []
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode("utf-8", errors="replace") if isinstance(e.stderr, bytes) else e.stderr
+            logger.warning(f"Rhubarb lip sync failed; returning audio without mouth cues: {stderr or e}")
+            return []
+        except Exception as e:
+            logger.warning(f"Unexpected Rhubarb lip sync error; returning audio without mouth cues: {e}")
+            return []
+
+    def _convert_mp3_to_wav(self, mp3_path: Path, wav_path: Path) -> None:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(mp3_path),
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                str(wav_path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=settings.rhubarb_timeout_seconds,
+        )
+
+    def _run_rhubarb(self, wav_path: Path, dialog_path: Path, output_path: Path) -> None:
+        subprocess.run(
+            [
+                settings.rhubarb_binary_path,
+                "-r",
+                "phonetic",
+                "-f",
+                "json",
+                "--extendedShapes",
+                settings.rhubarb_extended_shapes,
+                "-d",
+                str(dialog_path),
+                "-o",
+                str(output_path),
+                str(wav_path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=settings.rhubarb_timeout_seconds,
+        )
+
+    def _parse_rhubarb_output(self, output_path: Path) -> list[MouthCue]:
+        data = json.loads(output_path.read_text(encoding="utf-8"))
+        return self._parse_mouth_cues(data.get("mouthCues", []))
+
+    @staticmethod
+    def _parse_mouth_cues(raw_cues: Any) -> list[MouthCue]:
+        if not isinstance(raw_cues, list):
+            return []
+
+        mouth_cues: list[MouthCue] = []
+        for cue in raw_cues:
+            if not isinstance(cue, dict):
+                continue
+
+            value = str(cue.get("value", "")).upper()
+            if value not in ALLOWED_MOUTH_CUE_VALUES:
+                continue
+
+            try:
+                start = round(float(cue["start"]), 2)
+                end = round(float(cue["end"]), 2)
+            except (KeyError, TypeError, ValueError):
+                continue
+
+            if start < 0 or end < start:
+                continue
+
+            mouth_cues.append(MouthCue(start=start, end=end, value=value))
+
+        return mouth_cues
 
 
 

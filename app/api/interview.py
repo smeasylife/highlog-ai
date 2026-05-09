@@ -453,23 +453,29 @@ async def chat_audio(
 
         # 7. TTS (Text-to-Speech)
         audio_url = None
+        mouth_cues = []
         if next_question and not is_finished:
             try:
-                audio_url = await audio_service.text_to_speech(
+                tts_result = await audio_service.text_to_speech(
                     text=next_question,
                     user_id=str(current_user.user_id),
                     language_code="ko-KR"
                 )
+                if tts_result:
+                    audio_url = tts_result.audio_url
+                    mouth_cues = tts_result.mouth_cues
                 logger.info(f"TTS audio URL generated: {audio_url}")
             except Exception as tts_error:
                 logger.error(f"TTS failed: {tts_error}")
                 audio_url = None
+                mouth_cues = []
 
         # 8. 결과 반환
         return AudioInterviewResponse(
             transcript=transcript,
             next_question=next_question,
             audio_url=audio_url,
+            mouth_cues=mouth_cues,
             sub_topic=current_sub_topic,
             remaining_time=max(0, remaining_time),
             is_finished=is_finished

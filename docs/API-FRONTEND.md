@@ -338,7 +338,26 @@ Set-Cookie: guest_id={uuid}; HttpOnly; Max-Age=604800; Path=/; SameSite=Lax
 - 프론트는 `guestId`를 직접 보관하지 않습니다.
 - 이후 게스트 API 호출과 이관 API 호출은 쿠키가 전송되도록 `credentials`를 포함해야 합니다.
 
-### 4-2. 게스트 생기부 파싱
+### 4-2. 게스트 업로드 URL 발급
+```
+GET /ai/guest/presigned-url?fileName=생활기록부.pdf
+```
+**Request Header**
+```http
+Cookie: guest_id={uuid}
+```
+**Response**
+```json
+{
+  "presignedUrl": "https://s3.amazonaws.com/bucket/guests/{guest_id}/records/{uuid}_생활기록부.pdf?...",
+  "s3Key": "guests/{guest_id}/records/{uuid}_생활기록부.pdf",
+  "expiresIn": 300
+}
+```
+- 게스트 생기부 업로드는 로그인 없이 진행되지만 `guest_id` 쿠키는 필요합니다.
+- 프론트는 받은 `presignedUrl`로 S3에 직접 PUT 업로드한 뒤, `s3Key`를 `/ai/guest/records`에 전달합니다.
+
+### 4-3. 게스트 생기부 파싱
 ```
 POST /ai/guest/records
 ```
@@ -363,7 +382,7 @@ data: {"type": "error", "progress": 0, "message": "에러 메시지"}
 - FastAPI는 게스트 작업물에 `"임시 생기부"` 제목으로 저장합니다.
 - 정식 `student_records`, `record_chunks` 테이블에는 아직 저장하지 않습니다.
 
-### 4-3. 게스트 질문 생성
+### 4-4. 게스트 질문 생성
 ```
 POST /ai/guest/questions
 ```
@@ -389,7 +408,7 @@ data: {"type": "error", "progress": 0, "message": "에러 메시지"}
 - FastAPI는 게스트 작업물에 `"임시 질문"` 제목으로 저장합니다.
 - 정식 `question_sets`, `questions` 테이블에는 아직 저장하지 않습니다.
 
-### 4-4. 게스트 질문 목록 조회
+### 4-5. 게스트 질문 목록 조회
 ```
 GET /ai/guest/questions?category=세특&difficulty=기본
 ```
@@ -416,7 +435,7 @@ Cookie: guest_id={uuid}
 - 게스트에는 정식 `questions.id`가 없어서 `questionId`는 저장 순서 기반 임시 값입니다.
 - `category`, `difficulty`는 선택 필터입니다.
 
-### 4-5. 게스트 작업물 회원 이관
+### 4-6. 게스트 작업물 회원 이관
 ```
 POST /ai/guest/migrate
 ```
@@ -548,6 +567,10 @@ response_time: 30
 {
   "next_question": "구체적으로 어떤 분야에 관심이 있나요?",
   "audio_url": "https://s3.../question_2.mp3",
+  "mouthCues": [
+    { "start": 0.00, "end": 0.08, "value": "X" },
+    { "start": 0.08, "end": 0.21, "value": "D" }
+  ],
   "is_finished": false
 }
 ```
