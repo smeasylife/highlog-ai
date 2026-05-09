@@ -135,8 +135,8 @@ async def create_guest_session(
         value=guest_id,
         max_age=GUEST_COOKIE_MAX_AGE,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         path="/"
     )
 
@@ -475,7 +475,7 @@ async def migrate_guest_work(
         return GuestMigrateResponse(migrated=False, status="NOT_FOUND")
 
     if guest_work.status == "MIGRATED":
-        response.delete_cookie(key=GUEST_COOKIE_NAME, path="/", samesite="lax")
+        response.delete_cookie(key=GUEST_COOKIE_NAME, path="/", secure=True, samesite="none")
         return GuestMigrateResponse(migrated=False, status="MIGRATED")
 
     if not guest_work.record_json:
@@ -549,7 +549,7 @@ async def migrate_guest_work(
 
         guest_work.status = "MIGRATED"
         db.commit()
-        response.delete_cookie(key=GUEST_COOKIE_NAME, path="/", samesite="lax")
+        response.delete_cookie(key=GUEST_COOKIE_NAME, path="/", secure=True, samesite="none")
 
         logger.info(
             "Guest work migrated: guest_id=%s, user_id=%s, record_id=%s, question_set_id=%s",
