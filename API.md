@@ -79,7 +79,7 @@ data: {"status": "error", "message": "에러 메시지"}
 
 **Response Header:**
 ```http
-Set-Cookie: guest_id={uuid}; HttpOnly; Max-Age=604800; Path=/; SameSite=Lax
+Set-Cookie: guest_id={uuid}; HttpOnly; Max-Age=604800; Path=/; SameSite=None; Secure
 ```
 
 **Response:**

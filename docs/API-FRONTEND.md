@@ -328,7 +328,7 @@ POST /ai/guest/session
 ```
 **Response**
 ```http
-Set-Cookie: guest_id={uuid}; HttpOnly; Max-Age=604800; Path=/; SameSite=Lax
+Set-Cookie: guest_id={uuid}; HttpOnly; Max-Age=604800; Path=/; SameSite=None; Secure
 ```
 ```json
 {
