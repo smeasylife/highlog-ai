@@ -1,5 +1,7 @@
 # Python 3.11 공식 이미지 사용 (slim 버전으로 이미지 크기 최적화)
-FROM python:3.11-slim
+# Rhubarb 공식 Linux 바이너리는 amd64용이므로 기본 이미지를 linux/amd64로 고정합니다.
+ARG PYTHON_IMAGE_PLATFORM=linux/amd64
+FROM --platform=${PYTHON_IMAGE_PLATFORM} python:3.11-slim
 
 ARG RHUBARB_VERSION=1.14.0
 ENV DEBIAN_FRONTEND=noninteractive
