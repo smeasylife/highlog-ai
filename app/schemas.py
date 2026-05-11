@@ -144,7 +144,7 @@ class MouthCue(BaseModel):
 
     start: float = Field(..., description="입 모양 시작 시간(초)")
     end: float = Field(..., description="입 모양 종료 시간(초)")
-    value: str = Field(..., description="Rhubarb mouth shape code (A-F, X)")
+    value: str = Field(..., description="Rhubarb mouth shape code (A-H, X)")
 
 
 class AudioInterviewResponse(BaseModel):

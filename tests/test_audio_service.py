@@ -50,11 +50,13 @@ class AudioServiceRhubarbTests(unittest.IsolatedAsyncioTestCase):
         service.tts_client = FakeTTSClient()
         return service
 
-    def test_parse_mouth_cues_filters_to_minimal_shape_set(self):
+    def test_parse_mouth_cues_filters_to_extended_shape_set(self):
         raw_cues = [
             {"start": 0, "end": 0.08, "value": "X"},
             {"start": 0.08, "end": 0.21, "value": "D"},
             {"start": 0.21, "end": 0.30, "value": "G"},
+            {"start": 0.30, "end": 0.40, "value": "H"},
+            {"start": 0.40, "end": 0.50, "value": "I"},
             {"start": "bad", "end": 0.40, "value": "A"},
             {"start": 0.40, "end": 0.30, "value": "B"},
             "not-a-cue",
@@ -67,6 +69,8 @@ class AudioServiceRhubarbTests(unittest.IsolatedAsyncioTestCase):
             [
                 MouthCue(start=0.0, end=0.08, value="X"),
                 MouthCue(start=0.08, end=0.21, value="D"),
+                MouthCue(start=0.21, end=0.30, value="G"),
+                MouthCue(start=0.30, end=0.40, value="H"),
             ],
         )
 
@@ -98,7 +102,7 @@ class AudioServiceRhubarbTests(unittest.IsolatedAsyncioTestCase):
             "-f",
             "json",
             "--extendedShapes",
-            "X",
+            "GHX",
             "-d",
             "/tmp/dialog.txt",
             "-o",

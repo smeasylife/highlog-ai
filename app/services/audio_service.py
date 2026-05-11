@@ -24,7 +24,7 @@ from app.services.llm_service import llm_service
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_MOUTH_CUE_VALUES = {"A", "B", "C", "D", "E", "F", "X"}
+ALLOWED_MOUTH_CUE_VALUES = {"A", "B", "C", "D", "E", "F", "G", "H", "X"}
 
 
 @dataclass(frozen=True)
@@ -215,7 +215,7 @@ class AudioService:
             # 오디오 설정
             audio_config = texttospeech.AudioConfig(
                 audio_encoding=texttospeech.AudioEncoding.MP3,
-                speaking_rate=0.9,  # 약간 느리게 (면접관의 차분한 태도)
+                speaking_rate=1.1,  # 약간 느리게 (면접관의 차분한 태도)
                 pitch=0.0
             )
 

@@ -373,7 +373,7 @@ response_time: 45
 1. **STT**: Gemini 2.5 Flash Native Audio → 텍스트 변환
 2. **AI Processing**: 답변 분석 → 질문 생성
 3. **TTS**: Google Cloud TTS → 음성 변환 → S3 업로드
-4. **Lip Sync**: MP3 → WAV 변환(ffmpeg) → Rhubarb(`phonetic`, `A-F/X`) → `mouthCues` 반환
+4. **Lip Sync**: MP3 → WAV 변환(ffmpeg) → Rhubarb(`phonetic`, `A-H/X`) → `mouthCues` 반환
 
 ---
 
