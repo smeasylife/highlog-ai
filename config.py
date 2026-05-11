@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Rhubarb Lip Sync 설정
     rhubarb_binary_path: str = "rhubarb"
-    rhubarb_timeout_seconds: int = 20
+    rhubarb_timeout_seconds: int = 60
     rhubarb_extended_shapes: str = "GHX"
 
     # LangGraph (선택사항)
