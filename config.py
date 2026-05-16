@@ -23,7 +23,12 @@ class Settings(BaseSettings):
 
     # Google AI (Gemini) - .env 필수
     google_api_key: str
-    google_application_credentials: str = ""
+
+    # Azure Speech (TTS/Viseme token issuance)
+    azure_speech_key: str = ""
+    azure_speech_region: str = "koreacentral"
+    azure_speech_voice_name: str = "ko-KR-InJoonNeural"
+    azure_speech_language: str = "ko-KR"
 
     # LLM 설정
     llm_provider: str = "gemini"  # gemini, openai

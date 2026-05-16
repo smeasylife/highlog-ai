@@ -466,7 +466,8 @@ Cookie: guest_id={uuid}
 ### 흐름
 ```
 ① 텍스트: 첫 답변으로 초기화 → thread_id 발급 → 실시간 채팅
-② 오디오: 첫 답변(음성)으로 초기화 → STT → thread_id 발급 → 실시간 채팅 (STT → LangGraph → TTS)
+② 오디오: 첫 답변(음성)으로 초기화 → STT → thread_id 발급 → 실시간 채팅 (STT → LangGraph → 질문 텍스트)
+③ 음성 출력/립싱크: Azure Speech 토큰 발급 → 프론트에서 TTS + Viseme 처리
 ```
 
 ### 5-1. 텍스트 면접 초기화
@@ -507,13 +508,12 @@ response_time: 45
 {
   "next_question": "지원 동기가 무엇인가요?",
   "thread_id": "interview_1_10_abc123",
-  "audio_url": "https://s3.../question_1.mp3",
   "is_finished": false
 }
 ```
 - **STT**: Gemini 2.5 Flash Native Audio
 - **LangGraph**: 답변 분석 및 다음 질문 생성
-- **TTS**: Google Cloud TTS
+- **TTS/Viseme**: 프론트엔드가 Azure Speech SDK로 처리
 
 ### 5-3. 텍스트 채팅
 ```
@@ -546,13 +546,33 @@ response_time: 30
 **Response**
 ```json
 {
+  "transcript": "동아리 부장으로서 팀원 간의 의견 차이를 조율했습니다.",
   "next_question": "구체적으로 어떤 분야에 관심이 있나요?",
-  "audio_url": "https://s3.../question_2.mp3",
+  "sub_topic": "리더십",
+  "remaining_time": 480,
   "is_finished": false
 }
 ```
 
-### 5-5. 면접 내역 조회
+### 5-5. Azure Speech 토큰 발급
+```
+POST /ai/interview/speech/token
+```
+**Response**
+```json
+{
+  "token": "...",
+  "region": "koreacentral",
+  "expires_in": 540,
+  "speech_synthesis_language": "ko-KR",
+  "speech_synthesis_voice_name": "ko-KR-InJoonNeural"
+}
+```
+- 프론트는 `SpeechConfig.fromAuthorizationToken(token, region)`으로 Azure Speech SDK를 초기화합니다.
+- `speechSynthesisVoiceName`에 응답의 `speech_synthesis_voice_name` 값을 설정합니다.
+- `SpeechSynthesizer.visemeReceived` 이벤트를 구독해 이미지 립싱크를 처리합니다.
+
+### 5-6. 면접 내역 조회
 ```
 GET /ai/interview/list
 ```

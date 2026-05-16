@@ -142,10 +142,18 @@ class AudioInterviewResponse(BaseModel):
     """오디오 면접 응답"""
     transcript: str = Field(..., description="변환된 텍스트")
     next_question: str = Field(..., description="다음 질문 텍스트")
-    audio_url: Optional[str] = Field(None, description="다음 질문 음성 파일 URL")
     sub_topic: Optional[str] = Field(None, description="현재 주제")
     remaining_time: int = Field(..., description="남은 시간 (초)")
     is_finished: bool = Field(False, description="면접 종료 여부")
+
+
+class AzureSpeechTokenResponse(BaseModel):
+    """Azure Speech SDK 토큰 응답"""
+    token: str = Field(..., description="Azure Speech authorization token")
+    region: str = Field(..., description="Azure Speech 리전")
+    expires_in: int = Field(..., description="프론트 캐시 권장 TTL (초)")
+    speech_synthesis_language: str = Field(..., description="TTS 언어 코드")
+    speech_synthesis_voice_name: str = Field(..., description="TTS 음성 이름")
 
 
 class InterviewChatResponse(BaseModel):
