@@ -3,7 +3,7 @@
 이 파일은 로컬 개발/테스트 환경에서 JWT 인증 없이 면접 기능을 테스트하기 위해 제공됩니다.
 - POST /ai/interview/test/start: 인증 없는 면접 세션 시작
 - POST /ai/interview/test/chat/text/{session_id}: 인증 없는 텍스트 채팅
-- POST /ai/interview/test/chat/audio/{session_id}: 인증 없는 오디오 채팅
+- POST /ai/interview/test/chat/audio/{session_id}: 인증 없는 오디오 채팅 (STT + 질문 생성)
 """
 import logging
 import json
@@ -15,7 +15,11 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
-from app.schemas import StartInterviewResponse, SimpleChatRequest, AudioInterviewResponse
+from app.schemas import (
+    StartInterviewResponse,
+    SimpleChatRequest,
+    AudioInterviewResponse,
+)
 from app.services.interview_service import interview_service, SUB_TOPICS
 from app.services.audio_service import audio_service
 
@@ -361,7 +365,7 @@ async def chat_audio_test(
         response_time: 답변 소요 시간 (초)
 
     Returns:
-        AudioInterviewResponse: 다음 질문, 음성 URL
+        AudioInterviewResponse: 변환된 텍스트와 다음 질문
     """
     try:
         logger.info(f"[TEST] Audio chat request for session_id: {session_id}")
@@ -524,25 +528,10 @@ async def chat_audio_test(
                 is_finished=True
             )
 
-        # 6. TTS (Text-to-Speech)
-        audio_url = None
-        if next_question and not is_finished:
-            try:
-                audio_url = await audio_service.text_to_speech(
-                    text=next_question,
-                    user_id=str(session.user_id),
-                    language_code="ko-KR"
-                )
-                logger.info(f"[TEST] TTS audio URL generated: {audio_url}")
-            except Exception as tts_error:
-                logger.error(f"[TEST] TTS failed: {tts_error}")
-                audio_url = None
-
-        # 7. 결과 반환
+        # 6. 결과 반환
         return AudioInterviewResponse(
             transcript=transcript,
             next_question=next_question,
-            audio_url=audio_url,
             sub_topic=current_sub_topic,
             remaining_time=max(0, remaining_time),
             is_finished=is_finished

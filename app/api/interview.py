@@ -3,7 +3,8 @@
 변경된 API 구조:
 - POST /api/interview/start: 면접 세션 시작 (session_id 반환)
 - POST /api/interview/chat/text/{session_id}: 텍스트 기반 면접 (SSE 스트리밍)
-- POST /api/interview/chat/audio/{session_id}: 오디오 기반 면접
+- POST /api/interview/chat/audio/{session_id}: 오디오 기반 면접 (STT + 질문 생성)
+- POST /api/interview/speech/token: Azure Speech SDK 토큰 발급
 """
 import logging
 import io
@@ -18,15 +19,44 @@ from app.schemas import (
     StartInterviewResponse,
     SimpleChatRequest,
     AudioInterviewResponse,
+    AzureSpeechTokenResponse,
     DashboardResponse
 )
 from app.services.interview_service import interview_service, SUB_TOPICS
 from app.services.audio_service import audio_service
+from app.services.azure_speech_service import (
+    azure_speech_service,
+    AzureSpeechConfigurationError,
+    AzureSpeechTokenError,
+)
 from app.core.dependencies import get_current_user, CurrentUser
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# ==================== Azure Speech Token ====================
+
+@router.post("/speech/token", response_model=AzureSpeechTokenResponse)
+async def issue_speech_token(
+    current_user: CurrentUser = Depends(get_current_user)
+):
+    """
+    프론트엔드 Azure Speech SDK용 임시 토큰을 발급합니다.
+
+    프론트는 반환된 token/region으로 TTS를 호출하고, visemeReceived 이벤트를
+    구독해 립싱크를 처리합니다. Azure Speech 리소스 키는 서버에만 보관합니다.
+    """
+    try:
+        logger.info("Issuing Azure Speech token for user_id: %s", current_user.user_id)
+        return await azure_speech_service.get_token_response()
+    except AzureSpeechConfigurationError as e:
+        logger.error("Azure Speech configuration error: %s", e)
+        raise HTTPException(status_code=503, detail=str(e))
+    except AzureSpeechTokenError as e:
+        logger.error("Azure Speech token error: %s", e)
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 # ==================== 면접 세션 시작 ====================
@@ -289,7 +319,7 @@ async def chat_audio(
         response_time: 답변 소요 시간 (초)
 
     Returns:
-        AudioInterviewResponse: 다음 질문, 음성 URL
+        AudioInterviewResponse: 변환된 텍스트와 다음 질문
     """
     try:
         logger.info(f"Audio chat request for session_id: {session_id}")
@@ -451,25 +481,10 @@ async def chat_audio(
                 is_finished=True
             )
 
-        # 7. TTS (Text-to-Speech)
-        audio_url = None
-        if next_question and not is_finished:
-            try:
-                audio_url = await audio_service.text_to_speech(
-                    text=next_question,
-                    user_id=str(current_user.user_id),
-                    language_code="ko-KR"
-                )
-                logger.info(f"TTS audio URL generated: {audio_url}")
-            except Exception as tts_error:
-                logger.error(f"TTS failed: {tts_error}")
-                audio_url = None
-
-        # 8. 결과 반환
+        # 7. 결과 반환
         return AudioInterviewResponse(
             transcript=transcript,
             next_question=next_question,
-            audio_url=audio_url,
             sub_topic=current_sub_topic,
             remaining_time=max(0, remaining_time),
             is_finished=is_finished

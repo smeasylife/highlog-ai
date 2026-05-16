@@ -304,7 +304,8 @@ data: {"status": "error", "message": "질문 생성 중 오류가 발생했습�
 
 ### POST /ai/interview/chat/audio/{session_id}
 
-사용자의 음성 답변을 받아 STT → AI 처리 → TTS 과정을 거쳐 음성 질문을 반환합니다.
+사용자의 음성 답변을 받아 STT → AI 처리를 거쳐 다음 질문 텍스트를 반환합니다.
+오디오 재생과 립싱크는 프론트엔드가 Azure Speech SDK로 처리합니다.
 
 **Request:** `multipart/form-data`
 ```
@@ -318,7 +319,6 @@ response_time: 45
 {
   "transcript": "동아리 부장으로서 팀원 간의 의견 차이를 조율했습니다.",
   "next_question": "구체적으로 어떤 방법으로 의견 차이를 좁혔나요?",
-  "audio_url": "https://s3.../question_1.mp3",
   "sub_topic": "리더십",
   "remaining_time": 480,
   "is_finished": false
@@ -329,19 +329,44 @@ response_time: 45
 ```json
 {
   "transcript": "...",
-  "is_finished": true,
-  "report": {
-    "scores": {...},
-    "strength_tags": [...],
-    "weakness_tags": [...]
-  }
+  "next_question": "면접을 종료합니다. 수고하셨습니다.",
+  "sub_topic": null,
+  "remaining_time": 0,
+  "is_finished": true
 }
 ```
 
 **Process:**
 1. **STT**: Gemini 2.5 Flash Native Audio → 텍스트 변환
 2. **AI Processing**: 답변 분석 → 질문 생성
-3. **TTS**: Google Cloud TTS → 음성 변환 → S3 업로드
+3. **Frontend TTS/Viseme**: 프론트엔드가 `next_question`으로 Azure Speech SDK를 호출하고 `visemeReceived` 이벤트로 립싱크 처리
+
+---
+
+### 4-4. Azure Speech 토큰 발급
+
+### POST /ai/interview/speech/token
+
+프론트엔드 Azure Speech SDK에서 TTS와 Viseme 이벤트를 사용하기 위한 임시 토큰을 발급합니다.
+Azure Speech 리소스 키는 서버에만 보관됩니다.
+
+**Response:** `application/json`
+
+```json
+{
+  "token": "...",
+  "region": "koreacentral",
+  "expires_in": 540,
+  "speech_synthesis_language": "ko-KR",
+  "speech_synthesis_voice_name": "ko-KR-InJoonNeural"
+}
+```
+
+**Frontend 사용 흐름:**
+1. 오디오 채팅 응답의 `next_question` 수신
+2. `POST /ai/interview/speech/token` 호출 또는 캐시 토큰 재사용
+3. Azure Speech SDK에서 `SpeechConfig.fromAuthorizationToken(token, region)` 사용
+4. `speechSynthesisVoiceName` 설정 후 `SpeechSynthesizer.visemeReceived` 이벤트 구독
 
 ---
 

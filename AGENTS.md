@@ -48,8 +48,9 @@
 | `POST /api/records/{recordId}/questions` | 질문 생성 | AI가 카테고리별 질문, 모범 답안 생성 (SSE 스트리밍) |
 | `POST /api/interview/initialize/text` | 텍스트 기반 면접 초기화 | LangGraph 기반 실시간 텍스트 면접 시작 |
 | `POST /api/interview/chat/text/{thread_id}` | 텍스트 기반 면접 채팅 | 실시간 질문 생성 (SSE 스트리밍) |
-| `POST /api/interview/initialize/audio` | 오디오 기반 면접 초기화 | STT → LangGraph → TTS 음성 면접 시작 |
-| `POST /api/interview/chat/audio/{thread_id}` | 오디오 기반 면접 채팅 | STT → LangGraph → TTS 음성 질문 생성 |
+| `POST /api/interview/initialize/audio` | 오디오 기반 면접 초기화 | STT → LangGraph → 질문 텍스트 생성 |
+| `POST /api/interview/chat/audio/{thread_id}` | 오디오 기반 면접 채팅 | STT → LangGraph → 질문 텍스트 생성 |
+| `POST /api/interview/speech/token` | Azure Speech 토큰 발급 | 프론트엔드 TTS/Viseme용 임시 토큰 발급 |
 
 ---
 
@@ -166,9 +167,9 @@ SSE 스트리밍 기반 실시간 면접 시스템. 텍스트/오디오 두 가�
 - **Process**:
     1. **STT**: Gemini 2.5 Flash Native Audio → 텍스트 변환
     2. **AI Processing**: 텍스트 답변으로 동일한 로직 수행
-    3. **TTS**: 생성된 질문 텍스트 → Google Cloud TTS → 음성 파일
+    3. **Frontend TTS/Viseme**: 생성된 질문 텍스트를 프론트엔드가 Azure Speech SDK로 음성 변환 및 립싱크 처리
     4. State DB 업데이트
-- **Output**: 다음 질문 음성 파일(URL), 질문 텍스트 (SSE 스트리밍)
+- **Output**: 다음 질문 텍스트, 업데이트된 State
 
 ### 7.3 Interview Flow
 
@@ -341,7 +342,7 @@ async def process_answer(session_id: str, answer: str, response_time: int):
 ## 12. Key Development Rules
 
 - **Gemini Native Audio**: 별도 STT 없이 음성 파일 직접 Gemini 2.5 Flash 전달.
-- **Professional TTS**: Google Cloud TTS를 활용한 신뢰감 있는 음성 생성.
+- **Azure TTS/Viseme**: 백엔드는 Azure Speech 임시 토큰만 발급하고, 프론트엔드가 TTS와 Viseme ID 기반 립싱크를 처리.
 - **Structured Output**: AI 응답은 반드시 Pydantic 모델을 통한 JSON 포맷 강제.
 - **Cost**: 10분 면접 기준 약 26원 예상 (1초당 32토큰 계산).
 - **Few-shot Prompting**: InterviewData 테이블에서 검색한 실제 면접 질문을 예시로 활용하여 질문 품질 향상.
