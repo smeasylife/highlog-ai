@@ -647,6 +647,57 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
             logger.error(f"Error searching chunks for topic {topic}: {e}")
             return []
 
+    async def search_chunks_by_topic_async(
+        self,
+        record_id: int,
+        topic: str,
+        db: Session = None
+    ) -> List[int]:
+        """
+        주제에 따라 관련 청크를 pgvector 유사도 검색으로 찾기 (async 요청 흐름용)
+
+        FastAPI 요청 핸들러 안에서는 이미 이벤트 루프가 실행 중이므로,
+        동기 래퍼에서 별도 이벤트 루프를 만들지 않고 현재 루프에서 임베딩을 await합니다.
+        """
+        try:
+            from app.database import get_db
+
+            if db is None:
+                db_generator = get_db()
+                db = next(db_generator)
+                should_close = True
+            else:
+                should_close = False
+
+            try:
+                query_embedding = await self._embed_text(topic)
+                query = text("""
+                    SELECT id
+                    FROM record_chunks
+                    WHERE record_id = :record_id
+                    ORDER BY embedding <=> cast(:embedding as vector)
+                    LIMIT 3
+                """)
+
+                result = db.execute(
+                    query,
+                    {"record_id": record_id, "embedding": str(query_embedding)}
+                )
+
+                rows = result.fetchall()
+                chunk_ids = [row[0] for row in rows]
+
+                logger.info(f"Retrieved {len(chunk_ids)} chunk IDs for topic '{topic}' using async vector similarity")
+                return chunk_ids
+
+            finally:
+                if should_close:
+                    db.close()
+
+        except Exception as e:
+            logger.error(f"Error searching chunks asynchronously for topic {topic}: {e}")
+            return []
+
     def _embed_text_sync(self, text: str) -> List[float]:
         """텍스트를 벡터로 임베딩 (동기 버전 - 이벤트 루프 내에서도 안전하게 실행)"""
         import threading

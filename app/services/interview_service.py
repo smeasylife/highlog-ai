@@ -333,7 +333,7 @@ A: {last_answer}
             # 벡터 검색으로 관련 청크 가져오기
             db = SessionLocal()
             try:
-                chunk_ids = vector_service.search_chunks_by_topic(
+                chunk_ids = await vector_service.search_chunks_by_topic_async(
                     record_id=record_id,
                     topic=new_topic,
                     db=db
