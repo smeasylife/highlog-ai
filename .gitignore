@@ -39,6 +39,7 @@ Thumbs.db
 
 # Tools
 .serena/
+langgraph_rag_interview_toy/
 
 # Files
 *.xlsx
