@@ -651,7 +651,8 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
         self,
         record_id: int,
         topic: str,
-        db: Session = None
+        db: Session = None,
+        limit: int = 3
     ) -> List[int]:
         """
         주제에 따라 관련 청크를 pgvector 유사도 검색으로 찾기 (async 요청 흐름용)
@@ -676,12 +677,16 @@ PDF 파일은 학생의 생활기록부입니다. 각 페이지의 내용을 분
                     FROM record_chunks
                     WHERE record_id = :record_id
                     ORDER BY embedding <=> cast(:embedding as vector)
-                    LIMIT 3
+                    LIMIT :limit
                 """)
 
                 result = db.execute(
                     query,
-                    {"record_id": record_id, "embedding": str(query_embedding)}
+                    {
+                        "record_id": record_id,
+                        "embedding": str(query_embedding),
+                        "limit": limit
+                    }
                 )
 
                 rows = result.fetchall()

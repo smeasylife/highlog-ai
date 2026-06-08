@@ -227,6 +227,7 @@ class InterviewService:
 
     async def generate_follow_up_question(
         self,
+        record_id: int,
         last_question: str,
         last_answer: str,
         current_sub_topic: str,
@@ -240,12 +241,17 @@ class InterviewService:
             토큰 단위 텍스트
         """
         try:
-            # 학생부 컨텍스트가 없으면 빈 컨텍스트
-            context_text = "관련 학생부 정보가 없습니다."
-
-            # InterviewData 검색
             db = SessionLocal()
             try:
+                context_text = await self._retrieve_record_context(
+                    record_id=record_id,
+                    topic=current_sub_topic,
+                    target_department=target_department,
+                    last_question=last_question,
+                    last_answer=last_answer,
+                    db=db
+                )
+
                 few_shot_questions = await self._retrieve_interview_questions(
                     department=target_department,
                     sub_topic=current_sub_topic,
@@ -283,9 +289,19 @@ A: {last_answer}
 2. 그 다음 꼬리 질문을 생성하세요
 
 **꼬리 질문 생성 지침**:
-1. 답변에서 언급된 구체적 사례, 판단 근거, 배운 점을 집요하게 캐묻으세요.
-2. "왜 그렇게 생각했나?", "구체적으로 어떤 결과였나?" 등의 패턴 활용
-3. 학생부 정보와 교차 검증하여 질문
+1. 답변에서 언급된 구체적 사례, 판단 근거, 배운 점 중 하나만 집요하게 캐묻으세요.
+2. 질문은 한 문장으로 짧게 쓰고, 활동 하나와 확인할 점 하나만 물어보세요.
+3. 학생부 정보와 직전 답변에 직접 근거가 있는 내용만 질문하세요.
+4. 실제 면접 질문 예시의 스타일과 난이도는 참고하되 문장을 그대로 복사하지 마세요.
+5. 심화하더라도 대학 전공 지식을 요구하지 말고, 학생부 활동의 원리·과정·판단 이유를 한 단계 더 묻는 수준으로 작성하세요.
+
+**금지 규칙**:
+- 질문 하나에 여러 요구사항을 넣지 마세요.
+- "이유와 과정과 느낀 점을 모두 설명하세요"처럼 2개 이상의 답변 요구를 섞지 마세요.
+- "경험을 바탕으로 사회 문제 해결에서 고려할 점", "앞으로 어떻게 대처할 것인지"처럼 활동과 느슨하게 이어지는 일반론 질문은 만들지 마세요.
+- "이 경험이 역량 발전에 어떻게 기여했나요", "진로에 어떤 영향을 주었나요", "컴퓨터공학도로서 어떤 역량을 키웠나요"처럼 활동 밖의 자기평가 질문은 만들지 마세요.
+- 학생부에 단순히 "조사했다" 수준으로 적힌 내용을 "구현했다", "설계했다", "검증했다"처럼 확장하지 마세요.
+- 학생부에 없는 산출물, 결과, 역할, 기술을 사실처럼 전제하지 마세요.
 
 **⚠️ 데이터 끊김 처리 (중요)**:
 - 학생부 데이터가 중간에 끊길 수 있습니다.
@@ -336,11 +352,14 @@ A: {last_answer}
                 chunk_ids = await vector_service.search_chunks_by_topic_async(
                     record_id=record_id,
                     topic=new_topic,
-                    db=db
+                    db=db,
+                    limit=5
                 )
 
-                context_chunks = self._get_chunks_by_ids(chunk_ids)
+                context_chunks = self._get_chunks_by_ids(chunk_ids, db=db)
                 context_text = "\n\n".join(context_chunks)
+                if not context_text.strip():
+                    context_text = "관련 학생부 정보가 없습니다."
 
                 # InterviewData 검색
                 few_shot_questions = await self._retrieve_interview_questions(
@@ -382,9 +401,20 @@ A: {last_answer}
 2. 그 다음 새로운 주제에 대한 첫 질문을 생성하세요
 
 **첫 질문 생성 지침**:
-1. 해당 주제와 관련된 개방형 질문 생성
-2. 학생의 경험과 생각을 자유롭게 표현하게 유도
-3. 구체적인 사례를 요청하는 방식
+1. 질문은 한 문장으로 짧게 쓰고, 활동 하나와 확인할 점 하나만 물어보세요.
+2. 생활기록부 청크에 실제로 적힌 활동 하나를 중심으로 작성하세요.
+3. 생활기록부에 명확히 있는 내용만 근거로 삼고, 없는 활동이나 세부사항을 만들지 마세요.
+4. 실제 면접 질문 예시의 스타일과 난이도는 참고하되 문장을 그대로 복사하지 마세요.
+5. 고등학생이 학생부 활동과 고등학교 수준의 배경지식으로 답할 수 있는 범위를 넘지 마세요.
+6. 심화 질문이 필요해도 대학 전공 지식이 아니라 활동의 원리·과정·판단 이유 중 하나만 묻는 수준으로 작성하세요.
+
+**금지 규칙**:
+- 질문 하나에 여러 요구사항을 넣지 마세요.
+- "이유와 과정과 느낀 점을 모두 설명하세요"처럼 2개 이상의 답변 요구를 섞지 마세요.
+- "경험을 바탕으로 사회 문제 해결에서 고려할 점", "앞으로 어떻게 대처할 것인지"처럼 활동과 느슨하게 이어지는 일반론 질문은 만들지 마세요.
+- "이 경험이 역량 발전에 어떻게 기여했나요", "진로에 어떤 영향을 주었나요", "컴퓨터공학도로서 어떤 역량을 키웠나요"처럼 활동 밖의 자기평가 질문은 만들지 마세요.
+- 학생부에 단순히 "조사했다" 수준으로 적힌 내용을 "구현했다", "설계했다", "검증했다"처럼 확장하지 마세요.
+- 학생부에 없는 산출물, 결과, 역할, 기술을 사실처럼 전제하지 마세요.
 
 **⚠️ 데이터 끊김 처리 (중요)**:
 - 학생부 데이터가 중간에 끊길 수 있습니다.
@@ -426,20 +456,59 @@ A: {last_answer}
 
     # ==================== 헬퍼 메서드 ====================
 
-    def _get_chunks_by_ids(self, chunk_ids: List[int]) -> List[str]:
+    def _get_chunks_by_ids(self, chunk_ids: List[int], db: Optional[Session] = None) -> List[str]:
         """청크 ID로 텍스트 조회"""
         if not chunk_ids:
             return []
 
-        db = SessionLocal()
+        should_close = db is None
+        if db is None:
+            db = SessionLocal()
         try:
             from app.models import RecordChunk
             chunks = db.query(RecordChunk).filter(
                 RecordChunk.id.in_(chunk_ids)
             ).all()
-            return [chunk.chunk_text for chunk in chunks]
+            chunk_by_id = {chunk.id: chunk.chunk_text for chunk in chunks}
+            return [chunk_by_id[chunk_id] for chunk_id in chunk_ids if chunk_id in chunk_by_id]
         finally:
-            db.close()
+            if should_close:
+                db.close()
+
+    async def _retrieve_record_context(
+        self,
+        record_id: int,
+        topic: str,
+        target_department: str,
+        db: Session,
+        last_question: Optional[str] = None,
+        last_answer: Optional[str] = None
+    ) -> str:
+        """질문 생성에 사용할 학생부 관련 청크를 벡터 검색으로 가져옵니다."""
+        query_parts = [
+            target_department,
+            topic,
+            last_question or "",
+            last_answer or ""
+        ]
+        query_text = " | ".join(part.strip() for part in query_parts if part and part.strip())
+        if not query_text:
+            query_text = topic or target_department or "면접 질문"
+
+        chunk_ids = await vector_service.search_chunks_by_topic_async(
+            record_id=record_id,
+            topic=query_text,
+            db=db,
+            limit=5
+        )
+        context_chunks = self._get_chunks_by_ids(chunk_ids, db=db)
+        if not context_chunks:
+            logger.warning(
+                f"No record context found for record_id={record_id}, query='{query_text[:80]}'"
+            )
+            return "관련 학생부 정보가 없습니다."
+
+        return "\n\n".join(context_chunks)
 
     async def _retrieve_interview_questions(
         self,

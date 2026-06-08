@@ -145,11 +145,12 @@ async def chat_text_test(session_id: str, request: SimpleChatRequest):
                     question_buffer = []
                     last_question = logs[-1]["question"] if logs else ""
                     async for token in interview_service.generate_follow_up_question(
+                        record_id=session.record_id,
                         last_question=last_question,
                         last_answer=request.answer,
                         current_sub_topic=current_sub_topic,
                         follow_up_count=follow_up_count,
-                        target_department=session.target_department
+                        target_department=session.target_department or ""
                     ):
                         question_buffer.append(token)
                         yield f"data: {json.dumps({'status': 'generating', 'token': token}, ensure_ascii=False)}\n\n"
@@ -197,7 +198,7 @@ async def chat_text_test(session_id: str, request: SimpleChatRequest):
                     async for token in interview_service.generate_new_topic_question(
                         record_id=session.record_id,
                         new_topic=new_topic,
-                        target_department=session.target_department,
+                        target_department=session.target_department or "",
                         last_question=last_question,
                         last_answer=request.answer
                     ):
@@ -420,6 +421,7 @@ async def chat_audio_test(
             question_buffer = ""
             last_question = logs[-1]["question"] if logs else ""
             async for token in interview_service.generate_follow_up_question(
+                record_id=session.record_id,
                 last_question=last_question,
                 last_answer=transcript,
                 current_sub_topic=current_sub_topic,
